@@ -9,6 +9,8 @@ import productsRouter from './src/routes/products.js'
 import distributionCentersRouter from './src/routes/distributionCenters.js'
 import retailersRouter from './src/routes/retailers.js'
 import relationshipsRouter from './src/routes/relationships.js'
+import analysisRouter from './src/routes/analysis.js'
+import statsRouter from './src/routes/stats.js'
 
 dotenv.config()
 
@@ -23,6 +25,8 @@ app.use('/api/products', productsRouter)
 app.use('/api/distribution-centers', distributionCentersRouter)
 app.use('/api/retailers', retailersRouter)
 app.use('/api/relationships', relationshipsRouter)
+app.use('/api/analysis', analysisRouter)
+app.use('/api/stats', statsRouter)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

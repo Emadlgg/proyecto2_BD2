@@ -136,6 +136,63 @@ router.post('/sells', async (req, res, next) => {
   } catch (err) { next(err) } finally { await session.close() }
 })
 
+// POST Manufacturer -[REJECTS]-> Component
+router.post('/rejects', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const { manufacturerId, componentId, reason, rejectDate, batchNumber } = req.body
+    const result = await session.run(
+      `MATCH (m:Manufacturer {manufacturerId: $manufacturerId}), (c:Component {componentId: $componentId})
+       CREATE (m)-[r:REJECTS {
+         reason: $reason,
+         rejectDate: date($rejectDate),
+         batchNumber: $batchNumber
+       }]->(c)
+       RETURN r`,
+      { manufacturerId, componentId, reason, rejectDate, batchNumber }
+    )
+    res.status(201).json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// POST Retailer -[PROMOTES]-> Product
+router.post('/promotes', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const { retailerId, productId, campaignName, budget, startDate } = req.body
+    const result = await session.run(
+      `MATCH (r:Retailer {retailerId: $retailerId}), (p:Product {productId: $productId})
+       CREATE (r)-[rel:PROMOTES {
+         campaignName: $campaignName,
+         budget: $budget,
+         startDate: date($startDate)
+       }]->(p)
+       RETURN rel`,
+      { retailerId, productId, campaignName, budget, startDate }
+    )
+    res.status(201).json(result.records[0].get('rel').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// POST DistributionCenter -[AUDITS]-> Supplier
+router.post('/audits', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const { centerId, supplierId, auditorName, auditDate, passed } = req.body
+    const result = await session.run(
+      `MATCH (d:DistributionCenter {centerId: $centerId}), (s:Supplier {supplierId: $supplierId})
+       CREATE (d)-[r:AUDITS {
+         auditorName: $auditorName,
+         auditDate: date($auditDate),
+         passed: $passed
+       }]->(s)
+       RETURN r`,
+      { centerId, supplierId, auditorName, auditDate, passed }
+    )
+    res.status(201).json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
 // PATCH actualizar propiedades de una relación específica
 router.patch('/supplies/:supplierId/:componentId', async (req, res, next) => {
   const session = getSession()
