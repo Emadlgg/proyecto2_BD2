@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getSuppliers } from '../services/api';
-import { Search, Plus, Trash2, Edit, X } from 'lucide-react';
+import { Search, Plus, Trash2, Edit, X, Zap } from 'lucide-react';
 
 const Nodes = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -9,8 +9,11 @@ const Nodes = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [newNode, setNewNode] = useState({ name: '', country: '', rating: '', isActive: true });
+  const [newNode, setNewNode] = useState({ name: '', country: '', rating: '', isActive: true, isPreferred: false });
   const [editingNode, setEditingNode] = useState({ id: '', name: '', country: '', rating: '', isActive: true });
+  
+  const [bulkCountry, setBulkCountry] = useState('');
+  const [bulkUpdateStatus, setBulkUpdateStatus] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -32,11 +35,12 @@ const Nodes = () => {
   const handleAddNode = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:3000/api/suppliers', {
+      const endpoint = newNode.isPreferred ? 'http://localhost:3000/api/suppliers/preferred' : 'http://localhost:3000/api/suppliers';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          supplierId: `SUP-${Math.floor(Math.random() * 10000)}`,
+          supplierId: `SUP-${Math.floor(Math.random() * 100000)}`,
           name: newNode.name,
           country: newNode.country,
           rating: parseFloat(newNode.rating) || 5.0,
@@ -47,7 +51,7 @@ const Nodes = () => {
       });
       if (response.ok) {
         setShowAddModal(false);
-        setNewNode({ name: '', country: '', rating: '', isActive: true });
+        setNewNode({ name: '', country: '', rating: '', isActive: true, isPreferred: false });
         fetchData();
       }
     } catch (error) {
@@ -99,6 +103,79 @@ const Nodes = () => {
     }
   };
 
+  const handleDeleteProperty = async (e) => {
+    e.preventDefault();
+    if(window.confirm('¿Estás seguro de eliminar la propiedad Rating de este nodo?')) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/suppliers/${editingNode.id}/properties`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: ['rating'] })
+        });
+        if(response.ok) {
+          setShowEditModal(false);
+          fetchData();
+        }
+      } catch (error) {
+        console.error('Error delete property:', error);
+      }
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    if(!bulkCountry) return alert('Por favor ingresa un país');
+    if(window.confirm(`¿Estás seguro de actualizar el estado de TODOS los proveedores de ${bulkCountry}?`)) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/suppliers/bulk/by-country`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country: bulkCountry, isActive: bulkUpdateStatus })
+        });
+        const data = await response.json();
+        alert(`Se actualizaron ${data.updated} nodos.`);
+        setBulkCountry('');
+        fetchData();
+      } catch (error) {
+        console.error('Error bulk update:', error);
+      }
+    }
+  };
+
+  const handleBulkDeleteProperty = async () => {
+    if(!bulkCountry) return alert('Por favor ingresa un país');
+    if(window.confirm(`¿Estás seguro de ELIMINAR la propiedad 'rating' de TODOS los proveedores de ${bulkCountry}?`)) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/suppliers/bulk/properties`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country: bulkCountry, fields: ['rating'] })
+        });
+        if(response.ok) {
+          alert('Propiedad eliminada masivamente con éxito.');
+          setBulkCountry('');
+          fetchData();
+        }
+      } catch (error) {
+        console.error('Error bulk delete properties:', error);
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if(!bulkCountry) return alert('Por favor ingresa un país');
+    if(window.confirm(`¿Estás seguro de eliminar TODOS los proveedores de ${bulkCountry}?`)) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/suppliers/bulk/by-country/${encodeURIComponent(bulkCountry)}`, { method: 'DELETE' });
+        const data = await response.json();
+        alert(`Se eliminaron ${data.deleted} nodos.`);
+        setBulkCountry('');
+        fetchData();
+      } catch (error) {
+        console.error('Error bulk delete:', error);
+      }
+    }
+  };
+
   const filteredSuppliers = suppliers.filter(sup => 
     (sup.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (sup.country || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -108,12 +185,43 @@ const Nodes = () => {
     <div className="nodes-page">
       <div className="page-header">
         <div>
-          <h1>Entity Management</h1>
-          <p className="text-muted" style={{ color: 'var(--text-muted)' }}>View and manage nodes in the graph.</p>
+          <h1>Gestión de Entidades</h1>
+          <p className="text-muted" style={{ color: 'var(--text-muted)' }}>Visualiza y administra los nodos del grafo.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-          <Plus size={18} /> Add Node
+          <Plus size={18} /> Agregar Nodo
         </button>
+      </div>
+
+      <div className="dashboard-grid" style={{ marginBottom: '1.5rem' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <h3><Zap size={18} style={{ display: 'inline', color: '#f59e0b' }}/> Acciones Masivas por País</h3>
+          <div>
+            <label className="form-label">País Objetivo (Target Country)</label>
+            <input 
+              type="text" 
+              className="form-control" 
+              placeholder="Ej. USA, Germany..." 
+              value={bulkCountry}
+              onChange={(e) => setBulkCountry(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '0.5rem' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" id="bulkStatus" checked={bulkUpdateStatus} onChange={e => setBulkUpdateStatus(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <label htmlFor="bulkStatus" style={{ marginBottom: 0 }}>Marcar como Activo</label>
+            </div>
+            <button className="btn btn-outline" style={{ borderColor: '#f59e0b', color: '#f59e0b' }} onClick={handleBulkUpdate}>
+              Actualizar Todos
+            </button>
+            <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={handleBulkDeleteProperty}>
+              Eliminar Propiedad (Rating)
+            </button>
+            <button className="btn btn-danger" onClick={handleBulkDelete}>
+              Eliminar Todos
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="glass-panel" style={{ padding: '1.5rem' }}>
@@ -123,7 +231,7 @@ const Nodes = () => {
             <input 
               type="text" 
               className="form-control" 
-              placeholder="Filter by name or country in real-time..." 
+              placeholder="Filtrar por nombre o país en tiempo real..." 
               style={{ paddingLeft: '2.5rem' }}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -139,11 +247,12 @@ const Nodes = () => {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Name</th>
-                  <th>Country</th>
+                  <th>Nombre</th>
+                  <th>Etiquetas</th>
+                  <th>País</th>
                   <th>Rating</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,12 +261,25 @@ const Nodes = () => {
                   return (
                   <tr key={idx}>
                     <td><strong>{actualId}</strong></td>
-                    <td>{sup.name || 'Unknown'}</td>
+                    <td>{sup.name || 'Desconocido'}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {sup.labels?.map((lbl, i) => (
+                          <span key={i} style={{ 
+                            background: lbl === 'PreferredSupplier' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', 
+                            color: lbl === 'PreferredSupplier' ? '#f59e0b' : '#3b82f6', 
+                            padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' 
+                          }}>
+                            {lbl}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td>{sup.country || 'N/A'}</td>
-                    <td>{sup.rating ? sup.rating.toFixed(1) : '-'}</td>
+                    <td>{sup.rating !== undefined && sup.rating !== null ? sup.rating.toFixed(1) : <span style={{color: '#9ca3af', fontStyle: 'italic'}}>N/A</span>}</td>
                     <td>
                       <span className={`badge ${sup.isActive ? 'badge-success' : 'badge-warning'}`}>
-                        {sup.isActive ? 'Active' : 'Inactive'}
+                        {sup.isActive ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
                     <td>
@@ -183,14 +305,14 @@ const Nodes = () => {
             >
               <X size={24} />
             </button>
-            <h2 style={{ marginBottom: '1.5rem' }}>Add New Supplier</h2>
+            <h2 style={{ marginBottom: '1.5rem' }}>Agregar Nuevo Proveedor</h2>
             <form onSubmit={handleAddNode}>
               <div className="form-group">
-                <label className="form-label">Name</label>
+                <label className="form-label">Nombre</label>
                 <input required type="text" className="form-control" value={newNode.name} onChange={e => setNewNode({...newNode, name: e.target.value})} />
               </div>
               <div className="form-group">
-                <label className="form-label">Country</label>
+                <label className="form-label">País</label>
                 <input required type="text" className="form-control" value={newNode.country} onChange={e => setNewNode({...newNode, country: e.target.value})} />
               </div>
               <div className="form-group">
@@ -199,9 +321,13 @@ const Nodes = () => {
               </div>
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
                 <input type="checkbox" id="addStatus" checked={newNode.isActive} onChange={e => setNewNode({...newNode, isActive: e.target.checked})} style={{ width: '18px', height: '18px' }} />
-                <label htmlFor="addStatus" className="form-label" style={{ marginBottom: 0 }}>Supplier is Active</label>
+                <label htmlFor="addStatus" className="form-label" style={{ marginBottom: 0 }}>El proveedor está Activo</label>
               </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Create Supplier</button>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <input type="checkbox" id="addPreferred" checked={newNode.isPreferred} onChange={e => setNewNode({...newNode, isPreferred: e.target.checked})} style={{ width: '18px', height: '18px' }} />
+                <label htmlFor="addPreferred" className="form-label" style={{ marginBottom: 0 }}>Proveedor Preferido (Agrega 2da Etiqueta)</label>
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Crear Proveedor</button>
             </form>
           </div>
         </div>
@@ -216,14 +342,14 @@ const Nodes = () => {
             >
               <X size={24} />
             </button>
-            <h2 style={{ marginBottom: '1.5rem' }}>Edit Supplier</h2>
+            <h2 style={{ marginBottom: '1.5rem' }}>Editar Proveedor</h2>
             <form onSubmit={handleEditNode}>
               <div className="form-group">
-                <label className="form-label">Name</label>
+                <label className="form-label">Nombre</label>
                 <input required type="text" className="form-control" value={editingNode.name} onChange={e => setEditingNode({...editingNode, name: e.target.value})} />
               </div>
               <div className="form-group">
-                <label className="form-label">Country</label>
+                <label className="form-label">País</label>
                 <input required type="text" className="form-control" value={editingNode.country} onChange={e => setEditingNode({...editingNode, country: e.target.value})} />
               </div>
               <div className="form-group">
@@ -232,9 +358,14 @@ const Nodes = () => {
               </div>
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
                 <input type="checkbox" id="editStatus" checked={editingNode.isActive} onChange={e => setEditingNode({...editingNode, isActive: e.target.checked})} style={{ width: '18px', height: '18px' }} />
-                <label htmlFor="editStatus" className="form-label" style={{ marginBottom: 0 }}>Supplier is Active</label>
+                <label htmlFor="editStatus" className="form-label" style={{ marginBottom: 0 }}>El proveedor está Activo</label>
               </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Save Changes</button>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Cambios</button>
+                <button type="button" className="btn btn-outline" style={{ flex: 1, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleDeleteProperty}>
+                  Eliminar Prop. Rating
+                </button>
+              </div>
             </form>
           </div>
         </div>

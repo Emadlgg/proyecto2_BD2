@@ -10,6 +10,11 @@ export const getTopSuppliers = async () => {
   return res.json();
 };
 
+export const getStatsByCountry = async () => {
+  const res = await fetch(`${API_URL}/suppliers/stats/by-country`);
+  return res.json();
+};
+
 export const getShortestPath = async (supplierId, retailerId) => {
   const res = await fetch(`${API_URL}/analysis/shortest-path/${supplierId}/${retailerId}`);
   if (!res.ok) throw new Error('Path not found');

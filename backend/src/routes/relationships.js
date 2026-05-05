@@ -3,6 +3,42 @@ import { getSession } from '../config/neo4j.js'
 
 const router = Router()
 
+// GET todas las relaciones SHIPS_TO
+router.get('/ships-to', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const result = await session.run(
+      `MATCH (d:DistributionCenter)-[r:SHIPS_TO]->(ret:Retailer)
+       RETURN d.centerId AS source, ret.retailerId AS target, properties(r) AS props, type(r) AS type
+       LIMIT 50`
+    )
+    res.json(result.records.map(r => ({
+      source: r.get('source'),
+      target: r.get('target'),
+      type: r.get('type'),
+      props: r.get('props')
+    })))
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// GET todas las relaciones SUPPLIES
+router.get('/supplies', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const result = await session.run(
+      `MATCH (s:Supplier)-[r:SUPPLIES]->(c:Component)
+       RETURN s.supplierId AS source, c.componentId AS target, properties(r) AS props, type(r) AS type
+       LIMIT 50`
+    )
+    res.json(result.records.map(r => ({
+      source: r.get('source'),
+      target: r.get('target'),
+      type: r.get('type'),
+      props: r.get('props')
+    })))
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
 // POST Supplier -[SUPPLIES]-> Component
 router.post('/supplies', async (req, res, next) => {
   const session = getSession()
@@ -193,7 +229,37 @@ router.post('/audits', async (req, res, next) => {
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-// PATCH actualizar propiedades de una relación específica
+// PATCH actualizar propiedades en múltiples relaciones SHIPS_TO por route (BULK - DEBE IR PRIMERO)
+router.patch('/ships-to/bulk/by-route', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const { route, ...props } = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH ()-[r:SHIPS_TO]->() WHERE toLower(r.route) = toLower($route) SET ${setClause} RETURN count(r) AS updated`,
+      { route, ...props }
+    )
+    res.json({ updated: result.records[0].get('updated').toNumber() })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// PATCH actualizar propiedades de una relación específica SHIPS_TO
+router.patch('/ships-to/:centerId/:retailerId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (d:DistributionCenter {centerId: $centerId})-[r:SHIPS_TO]->(ret:Retailer {retailerId: $retailerId})
+       SET ${setClause} RETURN r`,
+      { centerId: req.params.centerId, retailerId: req.params.retailerId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// PATCH actualizar propiedades de una relación específica SUPPLIES
 router.patch('/supplies/:supplierId/:componentId', async (req, res, next) => {
   const session = getSession()
   try {
@@ -209,21 +275,23 @@ router.patch('/supplies/:supplierId/:componentId', async (req, res, next) => {
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-// PATCH actualizar propiedades en múltiples relaciones SHIPS_TO por route
-router.patch('/ships-to/bulk/by-route', async (req, res, next) => {
+// DELETE propiedad de una relación SHIPS_TO
+router.delete('/ships-to/:centerId/:retailerId/properties', async (req, res, next) => {
   const session = getSession()
   try {
-    const { route, ...props } = req.body
-    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const { fields } = req.body
+    const removeClause = fields.map(f => `r.${f}`).join(', ')
     const result = await session.run(
-      `MATCH ()-[r:SHIPS_TO {route: $route}]->() SET ${setClause} RETURN count(r) AS updated`,
-      { route, ...props }
+      `MATCH (d:DistributionCenter {centerId: $centerId})-[r:SHIPS_TO]->(ret:Retailer {retailerId: $retailerId})
+       REMOVE ${removeClause} RETURN r`,
+      { centerId: req.params.centerId, retailerId: req.params.retailerId }
     )
-    res.json({ updated: result.records[0].get('updated').toNumber() })
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-// DELETE propiedad de una relación
+// DELETE propiedad de una relación SUPPLIES
 router.delete('/supplies/:supplierId/:componentId/properties', async (req, res, next) => {
   const session = getSession()
   try {
@@ -246,14 +314,27 @@ router.delete('/ships-to/bulk/properties', async (req, res, next) => {
     const { route, fields } = req.body
     const removeClause = fields.map(f => `r.${f}`).join(', ')
     await session.run(
-      `MATCH ()-[r:SHIPS_TO {route: $route}]->() REMOVE ${removeClause}`,
+      `MATCH ()-[r:SHIPS_TO]->() WHERE toLower(r.route) = toLower($route) REMOVE ${removeClause}`,
       { route }
     )
     res.json({ message: 'Properties removed from relationships' })
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-// DELETE una relación
+// DELETE una relación SHIPS_TO
+router.delete('/ships-to/:centerId/:retailerId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(
+      `MATCH (d:DistributionCenter {centerId: $centerId})-[r:SHIPS_TO]->(ret:Retailer {retailerId: $retailerId})
+       DELETE r`,
+      { centerId: req.params.centerId, retailerId: req.params.retailerId }
+    )
+    res.json({ message: 'Relationship deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// DELETE una relación SUPPLIES
 router.delete('/supplies/:supplierId/:componentId', async (req, res, next) => {
   const session = getSession()
   try {
@@ -271,7 +352,7 @@ router.delete('/ships-to/bulk/by-route/:route', async (req, res, next) => {
   const session = getSession()
   try {
     const result = await session.run(
-      `MATCH ()-[r:SHIPS_TO {route: $route}]->() DELETE r RETURN count(r) AS deleted`,
+      `MATCH ()-[r:SHIPS_TO]->() WHERE toLower(r.route) = toLower($route) DELETE r RETURN count(r) AS deleted`,
       { route: req.params.route }
     )
     res.json({ deleted: result.records[0].get('deleted').toNumber() })
