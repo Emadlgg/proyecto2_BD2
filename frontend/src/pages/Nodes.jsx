@@ -132,6 +132,7 @@ export default function Nodes() {
   const [use2Labels, setUse2Labels] = useState(false);
   const [bulkVal, setBulkVal] = useState('');
   const [msg, setMsg] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const cfg = ENTITIES[tab];
 
@@ -154,28 +155,51 @@ export default function Nodes() {
 
   const doAdd = async (e) => {
     e.preventDefault();
+    setSaving(true);
     const url = use2Labels && cfg.supports2Labels ? `${cfg.endpoint}/preferred` : cfg.endpoint;
     const body = { ...addForm };
     cfg.fields.forEach(f => {
       if (f.type === 'number') body[f.key] = parseFloat(body[f.key]) || 0;
       if (f.type === 'boolean') body[f.key] = !!body[f.key];
     });
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (r.ok) { flash('Nodo creado'); setShowAdd(false); setAddForm(emptyForm(cfg.fields)); load(); }
-    else flash('Error al crear el nodo', 'error');
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (r.ok) { 
+        flash('Nodo creado exitosamente'); 
+        setShowAdd(false); 
+        setAddForm(emptyForm(cfg.fields)); 
+        load(); 
+      } else {
+        flash('Error al crear el nodo', 'error');
+      }
+    } catch {
+      flash('Error de conexión', 'error');
+    }
+    setSaving(false);
   };
 
   const doEdit = async (e) => {
     e.preventDefault();
-    const body = { ...editForm };
+    setSaving(true);
+    const body = { ...editForm, labels: use2Labels ? [cfg.secondLabel] : [] };
     delete body[cfg.idField];
     cfg.fields.forEach(f => {
       if (f.type === 'number' && body[f.key]) body[f.key] = parseFloat(body[f.key]) || 0;
       if (f.type === 'boolean') body[f.key] = !!body[f.key];
     });
-    const r = await fetch(`${cfg.endpoint}/${editId}/properties`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (r.ok) { flash('Nodo actualizado'); setShowEdit(false); load(); }
-    else flash('No se encontró el nodo', 'error');
+    try {
+      const r = await fetch(`${cfg.endpoint}/${editId}/properties`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (r.ok) { 
+        flash('Nodo actualizado exitosamente'); 
+        setShowEdit(false); 
+        load(); 
+      } else {
+        flash('Error al actualizar', 'error');
+      }
+    } catch {
+      flash('Error de conexión', 'error');
+    }
+    setSaving(false);
   };
 
   const doDelete = async (id) => {
@@ -191,31 +215,63 @@ export default function Nodes() {
     flash(`Propiedad eliminada`); load();
   };
 
+  const [bulkProp, setBulkProp] = useState('');
+  const [bulkPropVal, setBulkPropVal] = useState('');
+
   const doBulkUpdate = async () => {
-    if (!bulkVal.trim()) return flash('Ingresa un valor', 'error');
-    const r = await fetch(`${cfg.endpoint}/bulk/by-${cfg.bulkField}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [cfg.bulkField]: bulkVal, isActive: true }) });
-    if (r.ok) { const d = await r.json(); flash(`${d.updated} nodos actualizados`); load(); }
+    if (!bulkVal.trim()) return flash('Ingresa el valor del filtro (ej. Guatemala)', 'error');
+    if (!bulkProp) return flash('Selecciona una propiedad para actualizar', 'error');
+    
+    // Procesar valor según el tipo de campo
+    const field = cfg.fields.find(f => f.key === bulkProp);
+    let val = bulkPropVal;
+    if (field?.type === 'number') val = parseFloat(val) || 0;
+    if (field?.type === 'boolean') val = (val.toLowerCase() === 'true' || val === '1');
+
+    const r = await fetch(`${cfg.endpoint}/bulk/by-${cfg.bulkField}`, { 
+      method: 'PATCH', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ [cfg.bulkField]: bulkVal, [bulkProp]: val }) 
+    });
+    if (r.ok) { 
+      const d = await r.json(); 
+      flash(`✅ Se actualizaron ${d.updated} registros exitosamente`); 
+      load(); 
+    } else {
+      flash('❌ Error al realizar la actualización masiva', 'error');
+    }
   };
 
   const doBulkDelete = async () => {
-    if (!bulkVal.trim() || !confirm(`¿Eliminar todos con ${cfg.bulkField} = "${bulkVal}"?`)) return;
+    if (!bulkVal.trim() || !confirm(`¿Eliminar todos los registros donde ${cfg.bulkLabel || cfg.bulkField} sea "${bulkVal}"?`)) return;
     const r = await fetch(`${cfg.endpoint}/bulk/by-${cfg.bulkField}/${encodeURIComponent(bulkVal)}`, { method: 'DELETE' });
-    if (r.ok) { const d = await r.json(); flash(`${d.deleted} nodos eliminados`); load(); }
+    if (r.ok) { const d = await r.json(); flash(`✅ ${d.deleted} nodos eliminados`); load(); }
   };
 
   const doBulkDeleteProp = async () => {
-    if (!bulkVal.trim()) return flash('Ingresa un valor', 'error');
-    const prop = cfg.fields.find(f => f.key !== cfg.idField && f.type !== 'boolean')?.key;
-    if (!prop) return;
-    await fetch(`${cfg.endpoint}/bulk/properties`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [cfg.bulkField]: bulkVal, fields: [prop] }) });
-    flash('Propiedades eliminadas en masa'); load();
+    if (!bulkVal.trim()) return flash('Ingresa el valor del filtro', 'error');
+    if (!bulkProp) return flash('Selecciona la propiedad que deseas limpiar', 'error');
+    
+    if (!confirm(`¿Estás seguro de ELIMINAR la propiedad "${bulkProp}" de todos los registros de "${bulkVal}"?`)) return;
+
+    const r = await fetch(`${cfg.endpoint}/bulk/properties`, { 
+      method: 'DELETE', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ [cfg.bulkField]: bulkVal, fields: [bulkProp] }) 
+    });
+    if (r.ok) {
+      flash('✅ Propiedades eliminadas en masa'); 
+      load();
+    }
   };
 
   const openEdit = (n) => {
     setEditId(n[cfg.idField]);
+    setUse2Labels(n.labels?.includes(cfg.secondLabel) || false);
     // Preparamos los datos para el formulario (aplanar objetos de Neo4j)
     const prepared = {};
     Object.entries(n).forEach(([k, v]) => {
+      if (k === 'labels') return;
       if (v && typeof v === 'object' && 'year' in v) {
         // Formato YYYY-MM-DD para <input type="date">
         const y = fmt(v.year), m = String(fmt(v.month)).padStart(2,'0'), d = String(fmt(v.day)).padStart(2,'0');
@@ -259,16 +315,39 @@ export default function Nodes() {
       </div>
 
       {/* Operaciones masivas */}
-      <div className="section">
-        <div className="section-title">Operaciones masivas — filtrar por {cfg.bulkLabel || cfg.bulkField}</div>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, minWidth: 160 }}>
-            <input type="text" className="form-input" placeholder={`Ej. USA, Electronics...`} value={bulkVal} onChange={e => setBulkVal(e.target.value)} />
+      <div className="section" style={{ borderLeft: '4px solid #38bdf8' }}>
+        <div className="section-title">Operaciones Masivas — Filtrar por {cfg.bulkLabel || cfg.bulkField}</div>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          
+          <div style={{ flex: '1 1 200px' }}>
+            <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>1. Valor del Filtro (ej. {cfg.bulkField === 'country' ? 'Guatemala' : 'Electronics'})</label>
+            <input type="text" className="form-input" value={bulkVal} onChange={e => setBulkVal(e.target.value)} placeholder="Filtrar por..." />
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={doBulkUpdate}>Actualizar todos</button>
-          <button className="btn btn-warning btn-sm" onClick={doBulkDeleteProp}>Eliminar propiedad (masivo)</button>
-          <button className="btn btn-danger btn-sm" onClick={doBulkDelete}>Eliminar todos</button>
+
+          <div style={{ flex: '1 1 200px' }}>
+            <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>2. Seleccionar Propiedad</label>
+            <select className="form-input" value={bulkProp} onChange={e => setBulkProp(e.target.value)}>
+              <option value="">-- Elegir propiedad --</option>
+              {cfg.fields.filter(f => f.key !== cfg.idField).map(f => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ flex: '1 1 200px' }}>
+            <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>3. Nuevo Valor (o dejar vacío para eliminar)</label>
+            <input type="text" className="form-input" value={bulkPropVal} onChange={e => setBulkPropVal(e.target.value)} placeholder="Nuevo valor..." />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem' }}>
+            <button className="btn btn-secondary btn-sm" onClick={doBulkUpdate}>Actualizar Todos</button>
+            <button className="btn btn-warning btn-sm" style={{ color: '#ef4444' }} onClick={doBulkDeleteProp}>Limpiar Propiedad</button>
+            <button className="btn btn-danger btn-sm" onClick={doBulkDelete}>Eliminar Grupo</button>
+          </div>
         </div>
+        <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.75rem' }}>
+          * Las actualizaciones masivas afectan a todos los nodos que coincidan con el filtro del paso 1.
+        </p>
       </div>
 
       {/* Table */}
@@ -286,8 +365,8 @@ export default function Nodes() {
           // Columnas dinámicas: usa las llaves del primer nodo real
           const sample = filtered[0];
           const dynCols = sample
-            ? Object.keys(sample).filter(k => k !== cfg.idField && k !== 'labels').slice(0, 4)
-            : cfg.fields.filter(f => f.key !== cfg.idField).slice(0, 4).map(f => f.key);
+            ? Object.keys(sample).filter(k => k !== cfg.idField && k !== 'labels').slice(0, 7)
+            : cfg.fields.filter(f => f.key !== cfg.idField).slice(0, 7).map(f => f.key);
           return (
             <div className="table-wrap">
               <table>
@@ -310,7 +389,14 @@ export default function Nodes() {
                     const id = fmt(n[cfg.idField]) ?? `#${i}`;
                     return (
                       <tr key={i}>
-                        <td style={{ color: cfg.color, fontWeight: 600, fontSize: '0.85rem' }}>{id}</td>
+                        <td>
+                          <div style={{ color: cfg.color, fontWeight: 600, fontSize: '0.85rem' }}>{id}</div>
+                          {n.labels?.includes(cfg.secondLabel) && (
+                            <div style={{ fontSize: '0.65rem', background: 'rgba(52,211,153,0.1)', color: '#34d399', padding: '1px 4px', borderRadius: '4px', display: 'inline-block', marginTop: '2px' }}>
+                              Preferred
+                            </div>
+                          )}
+                        </td>
                         {dynCols.map(k => {
                           const v = n[k];
                           const isBool = typeof v === 'boolean' || (typeof v === 'string' && (v === 'true' || v === 'false'));
@@ -368,7 +454,9 @@ export default function Nodes() {
                   <label htmlFor="lbl2">Agregar label extra: <b>{cfg.secondLabel}</b></label>
                 </div>
               )}
-              <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Crear</button>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={saving}>
+                {saving ? 'Procesando...' : 'Crear'}
+              </button>
             </form>
           </div>
         </div>
@@ -389,8 +477,16 @@ export default function Nodes() {
                   <Field f={f} value={editForm[f.key]} onChange={v => setEditForm(p => ({ ...p, [f.key]: v }))} />
                 </div>
               ))}
+              {cfg.supports2Labels && (
+                <div className="check-row" style={{ marginBottom: '1rem' }}>
+                  <input type="checkbox" id="lbl2edit" checked={use2Labels} onChange={e => setUse2Labels(e.target.checked)} />
+                  <label htmlFor="lbl2edit">Label extra: <b>{cfg.secondLabel}</b></label>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={saving}>
+                  {saving ? 'Procesando...' : 'Guardar'}
+                </button>
                 <button type="button" className="btn btn-warning" style={{ flex: 1 }} onClick={() => { doDeleteProp(editId); setShowEdit(false); }}>
                   Eliminar propiedad
                 </button>

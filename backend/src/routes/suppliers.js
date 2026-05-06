@@ -120,18 +120,31 @@ router.delete('/bulk/by-country/:country', async (req, res, next) => {
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-// PATCH agregar propiedades a uno (individual)
+// PATCH actualizar propiedades a uno (individual)
 router.patch('/:id/properties', async (req, res, next) => {
   const session = getSession()
   try {
-    const props = req.body
-    const setClause = Object.keys(props).map(k => `s.${k} = $${k}`).join(', ')
+    const { labels, ...props } = req.body
+    const setClause = Object.keys(props).length 
+      ? 'SET ' + Object.keys(props).map(k => `s.${k} = $${k}`).join(', ')
+      : ''
+    
+    const labelClause = labels?.includes('PreferredSupplier')
+      ? 'SET s:PreferredSupplier'
+      : 'REMOVE s:PreferredSupplier'
+
     const result = await session.run(
-      `MATCH (s:Supplier {supplierId: $id}) SET ${setClause} RETURN s`,
+      `MATCH (s:Supplier {supplierId: $id}) 
+       ${setClause} 
+       ${labelClause}
+       RETURN properties(s) AS props, labels(s) AS labels`,
       { id: req.params.id, ...props }
     )
     if (!result.records.length) return res.status(404).json({ error: 'Not found' })
-    res.json(result.records[0].get('s').properties)
+    res.json({
+      ...result.records[0].get('props'),
+      labels: result.records[0].get('labels')
+    })
   } catch (err) { next(err) } finally { await session.close() }
 })
 

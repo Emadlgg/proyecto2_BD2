@@ -11,6 +11,7 @@ import retailersRouter from './src/routes/retailers.js'
 import relationshipsRouter from './src/routes/relationships.js'
 import analysisRouter from './src/routes/analysis.js'
 import statsRouter from './src/routes/stats.js'
+import uploadRouter from './src/routes/upload.js'
 
 dotenv.config()
 
@@ -27,6 +28,7 @@ app.use('/api/retailers', retailersRouter)
 app.use('/api/relationships', relationshipsRouter)
 app.use('/api/analysis', analysisRouter)
 app.use('/api/stats', statsRouter)
+app.use('/api/upload', uploadRouter)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

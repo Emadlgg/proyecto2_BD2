@@ -138,6 +138,7 @@ const Relationships = () => {
   const [deleteIds, setDeleteIds] = useState({});
   const [bulkRoute, setBulkRoute] = useState('Ground');
   const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const cfg = REL_TYPES.find(r => r.key === activeTab);
 
@@ -169,14 +170,25 @@ const Relationships = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    setSaving(true);
     const body = { ...createForm };
     cfg.fields.forEach(f => {
       if (f.type === 'number') body[f.key] = parseFloat(body[f.key]) || 0;
       if (f.type === 'select' && (body[f.key] === 'true' || body[f.key] === 'false')) body[f.key] = body[f.key] === 'true';
     });
-    const res = await fetch(`${API}/${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (res.ok) { showMsg(`✅ Relación ${cfg.label} creada exitosamente`); setCreateForm(emptyForm(cfg.fields)); fetchRelationships(); }
-    else showMsg('❌ Error: verifica que los IDs existan en la BD');
+    try {
+      const res = await fetch(`${API}/${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) { 
+        showMsg(`✅ Relación ${cfg.label} creada exitosamente`); 
+        setCreateForm(emptyForm(cfg.fields)); 
+        fetchRelationships(); 
+      } else {
+        showMsg('❌ Error: verifica que los IDs existan en la BD');
+      }
+    } catch {
+      showMsg('❌ Error de conexión');
+    }
+    setSaving(false);
   };
 
   const handleIndividualUpdate = async (e) => {
@@ -184,6 +196,7 @@ const Relationships = () => {
     const { id1, id2, ...props } = updateForm;
     if (!id1 || !id2) return showMsg('❌ Ingresa ambos IDs');
     
+    setSaving(true);
     // Convert numerical values
     const processedProps = {};
     Object.entries(props).forEach(([k, v]) => {
@@ -192,18 +205,23 @@ const Relationships = () => {
       else processedProps[k] = v;
     });
 
-    const res = await fetch(`${API}/${cfg.key}/${id1}/${id2}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(processedProps)
-    });
+    try {
+      const res = await fetch(`${API}/${cfg.key}/${id1}/${id2}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(processedProps)
+      });
 
-    if (res.ok) {
-      showMsg(`✅ Relación ${cfg.label} actualizada`);
-      fetchRelationships();
-    } else {
-      showMsg('❌ No se encontró la relación o error en el servidor');
+      if (res.ok) {
+        showMsg(`✅ Relación ${cfg.label} actualizada`);
+        fetchRelationships();
+      } else {
+        showMsg('❌ No se encontró la relación o error en el servidor');
+      }
+    } catch {
+      showMsg('❌ Error de conexión');
     }
+    setSaving(false);
   };
 
   const handleDeleteSingle = async () => {
@@ -211,13 +229,20 @@ const Relationships = () => {
     if (!id1 || !id2) return showMsg('❌ Ingresa ambos IDs');
     if (!window.confirm('¿Eliminar esta relación de forma permanente?')) return;
     
-    const res = await fetch(`${API}/${cfg.key}/${id1}/${id2}`, { method: 'DELETE' });
-    if (res.ok) {
-      showMsg('✅ Relación eliminada exitosamente');
-      fetchRelationships();
-    } else {
-      showMsg('❌ No se encontró la relación');
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/${cfg.key}/${id1}/${id2}`, { method: 'DELETE' });
+      if (res.ok) {
+        showMsg('✅ Relación eliminada exitosamente');
+        setDeleteIds({ id1: '', id2: '' });
+        fetchRelationships();
+      } else {
+        showMsg('❌ No se encontró la relación');
+      }
+    } catch {
+      showMsg('❌ Error de conexión');
     }
+    setSaving(false);
   };
 
   const handleBulkUpdate = async (e) => {
@@ -307,7 +332,9 @@ const Relationships = () => {
                 <FieldInput field={f} value={createForm[f.key]} onChange={v => setCreateForm(p => ({ ...p, [f.key]: v }))}/>
               </div>
             ))}
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.25rem' }}>Crear Relación</button>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.25rem' }} disabled={saving}>
+              {saving ? 'Procesando...' : 'Crear Relación'}
+            </button>
           </form>
         </div>
 
@@ -330,7 +357,9 @@ const Relationships = () => {
                 <FieldInput field={f} value={updateForm[f.key]} onChange={v => setUpdateForm(p => ({ ...p, [f.key]: v }))}/>
               </div>
             ))}
-            <button type="submit" className="btn btn-warning" style={{ width: '100%', marginTop: '0.25rem' }}>Actualizar Propiedades</button>
+            <button type="submit" className="btn btn-warning" style={{ width: '100%', marginTop: '0.25rem' }} disabled={saving}>
+              {saving ? 'Procesando...' : 'Actualizar Propiedades'}
+            </button>
           </form>
         </div>
 
@@ -346,7 +375,9 @@ const Relationships = () => {
               <label className="form-label">ID Destino</label>
               <input className="form-input" value={deleteIds.id2 || ''} onChange={e => setDeleteIds(p => ({ ...p, id2: e.target.value }))} placeholder="ID destino"/>
             </div>
-            <button className="btn btn-danger" style={{ width: '100%' }} onClick={handleDeleteSingle}>Eliminar Definitivamente</button>
+            <button className="btn btn-danger" style={{ width: '100%' }} onClick={handleDeleteSingle} disabled={saving}>
+              {saving ? 'Procesando...' : 'Eliminar Definitivamente'}
+            </button>
           </div>
 
           {activeTab === 'ships-to' && (
