@@ -4,20 +4,23 @@ from neo4j import GraphDatabase
 from dotenv import load_dotenv
 
 # Cargar variables de entorno del backend
-load_dotenv(dotenv_path='../backend/.env')
+current_dir = os.path.dirname(os.path.abspath(__file__))
+dotenv_path = os.path.join(current_dir, '..', 'backend', '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 URI = os.getenv("NEO4J_URI")
 USER = os.getenv("NEO4J_USER")
 PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 if not URI or not USER or not PASSWORD:
-    print("Error: Credenciales no encontradas en ../backend/.env")
+    print(f"Error: Credenciales no encontradas en {dotenv_path}")
     exit(1)
 
 driver = GraphDatabase.driver(URI, auth=(USER, PASSWORD))
 
 def read_csv(filename):
-    filepath = os.path.join('csv', filename)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(current_dir, 'csv', filename)
     with open(filepath, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         return list(reader)

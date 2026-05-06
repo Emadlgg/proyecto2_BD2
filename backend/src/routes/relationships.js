@@ -3,31 +3,32 @@ import { getSession } from '../config/neo4j.js'
 
 const router = Router()
 
-// GET todas las relaciones SHIPS_TO
-router.get('/ships-to', async (req, res, next) => {
+// GET genérico para cualquier tipo de relación
+router.get('/:type', async (req, res, next) => {
   const session = getSession()
-  try {
-    const result = await session.run(
-      `MATCH (d:DistributionCenter)-[r:SHIPS_TO]->(ret:Retailer)
-       RETURN d.centerId AS source, ret.retailerId AS target, properties(r) AS props, type(r) AS type
-       LIMIT 50`
-    )
-    res.json(result.records.map(r => ({
-      source: r.get('source'),
-      target: r.get('target'),
-      type: r.get('type'),
-      props: r.get('props')
-    })))
-  } catch (err) { next(err) } finally { await session.close() }
-})
+  const relType = req.params.type.toUpperCase().replace(/-/g, '_')
+  
+  // Mapeo de tipos a etiquetas de nodos para el MATCH
+  const typeMap = {
+    'SUPPLIES': { s: 'Supplier', t: 'Component', sId: 'supplierId', tId: 'componentId' },
+    'SHIPS_TO': { s: 'DistributionCenter', t: 'Retailer', sId: 'centerId', tId: 'retailerId' },
+    'REQUIRES': { s: 'Product', t: 'Component', sId: 'productId', tId: 'componentId' },
+    'MANUFACTURES': { s: 'Manufacturer', t: 'Product', sId: 'manufacturerId', tId: 'productId' },
+    'SOURCES_FROM': { s: 'Manufacturer', t: 'Supplier', sId: 'manufacturerId', tId: 'supplierId' },
+    'RECEIVES_FROM': { s: 'DistributionCenter', t: 'Manufacturer', sId: 'centerId', tId: 'manufacturerId' },
+    'SELLS': { s: 'Retailer', t: 'Product', sId: 'retailerId', tId: 'productId' },
+    'REJECTS': { s: 'Manufacturer', t: 'Component', sId: 'manufacturerId', tId: 'componentId' },
+    'PROMOTES': { s: 'Retailer', t: 'Product', sId: 'retailerId', tId: 'productId' },
+    'AUDITS': { s: 'DistributionCenter', t: 'Supplier', sId: 'centerId', tId: 'supplierId' },
+  }
 
-// GET todas las relaciones SUPPLIES
-router.get('/supplies', async (req, res, next) => {
-  const session = getSession()
+  const map = typeMap[relType]
+  if (!map) return res.status(400).json({ error: 'Tipo de relación no soportado para vista previa' })
+
   try {
     const result = await session.run(
-      `MATCH (s:Supplier)-[r:SUPPLIES]->(c:Component)
-       RETURN s.supplierId AS source, c.componentId AS target, properties(r) AS props, type(r) AS type
+      `MATCH (s:${map.s})-[r:${relType}]->(t:${map.t})
+       RETURN s.${map.sId} AS source, t.${map.tId} AS target, properties(r) AS props, type(r) AS type
        LIMIT 50`
     )
     res.json(result.records.map(r => ({
@@ -356,6 +357,198 @@ router.delete('/ships-to/bulk/by-route/:route', async (req, res, next) => {
       { route: req.params.route }
     )
     res.json({ deleted: result.records[0].get('deleted').toNumber() })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ REQUIRES ------------------
+router.patch('/requires/:productId/:componentId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (p:Product {productId: $productId})-[r:REQUIRES]->(c:Component {componentId: $componentId})
+       SET ${setClause} RETURN r`,
+      { productId: req.params.productId, componentId: req.params.componentId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/requires/:productId/:componentId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (p:Product {productId: $productId})-[r:REQUIRES]->(c:Component {componentId: $componentId}) DELETE r`, { productId: req.params.productId, componentId: req.params.componentId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ MANUFACTURES ------------------
+router.patch('/manufactures/:manufacturerId/:productId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (m:Manufacturer {manufacturerId: $manufacturerId})-[r:MANUFACTURES]->(p:Product {productId: $productId})
+       SET ${setClause} RETURN r`,
+      { manufacturerId: req.params.manufacturerId, productId: req.params.productId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/manufactures/:manufacturerId/:productId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (m:Manufacturer {manufacturerId: $manufacturerId})-[r:MANUFACTURES]->(p:Product {productId: $productId}) DELETE r`, { manufacturerId: req.params.manufacturerId, productId: req.params.productId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ SOURCES_FROM ------------------
+router.patch('/sources-from/:manufacturerId/:supplierId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (m:Manufacturer {manufacturerId: $manufacturerId})-[r:SOURCES_FROM]->(s:Supplier {supplierId: $supplierId})
+       SET ${setClause} RETURN r`,
+      { manufacturerId: req.params.manufacturerId, supplierId: req.params.supplierId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/sources-from/:manufacturerId/:supplierId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (m:Manufacturer {manufacturerId: $manufacturerId})-[r:SOURCES_FROM]->(s:Supplier {supplierId: $supplierId}) DELETE r`, { manufacturerId: req.params.manufacturerId, supplierId: req.params.supplierId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ RECEIVES_FROM ------------------
+router.patch('/receives-from/:centerId/:manufacturerId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (d:DistributionCenter {centerId: $centerId})-[r:RECEIVES_FROM]->(m:Manufacturer {manufacturerId: $manufacturerId})
+       SET ${setClause} RETURN r`,
+      { centerId: req.params.centerId, manufacturerId: req.params.manufacturerId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/receives-from/:centerId/:manufacturerId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (d:DistributionCenter {centerId: $centerId})-[r:RECEIVES_FROM]->(m:Manufacturer {manufacturerId: $manufacturerId}) DELETE r`, { centerId: req.params.centerId, manufacturerId: req.params.manufacturerId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ SELLS ------------------
+router.patch('/sells/:retailerId/:productId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (ret:Retailer {retailerId: $retailerId})-[r:SELLS]->(p:Product {productId: $productId})
+       SET ${setClause} RETURN r`,
+      { retailerId: req.params.retailerId, productId: req.params.productId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/sells/:retailerId/:productId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (ret:Retailer {retailerId: $retailerId})-[r:SELLS]->(p:Product {productId: $productId}) DELETE r`, { retailerId: req.params.retailerId, productId: req.params.productId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ REJECTS ------------------
+router.patch('/rejects/:manufacturerId/:componentId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (m:Manufacturer {manufacturerId: $manufacturerId})-[r:REJECTS]->(c:Component {componentId: $componentId})
+       SET ${setClause} RETURN r`,
+      { manufacturerId: req.params.manufacturerId, componentId: req.params.componentId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/rejects/:manufacturerId/:componentId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (m:Manufacturer {manufacturerId: $manufacturerId})-[r:REJECTS]->(c:Component {componentId: $componentId}) DELETE r`, { manufacturerId: req.params.manufacturerId, componentId: req.params.componentId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ PROMOTES ------------------
+router.patch('/promotes/:retailerId/:productId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (ret:Retailer {retailerId: $retailerId})-[r:PROMOTES]->(p:Product {productId: $productId})
+       SET ${setClause} RETURN r`,
+      { retailerId: req.params.retailerId, productId: req.params.productId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/promotes/:retailerId/:productId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (ret:Retailer {retailerId: $retailerId})-[r:PROMOTES]->(p:Product {productId: $productId}) DELETE r`, { retailerId: req.params.retailerId, productId: req.params.productId })
+    res.json({ message: 'Deleted' })
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+// ------------------ AUDITS ------------------
+router.patch('/audits/:centerId/:supplierId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    const props = req.body
+    const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
+    const result = await session.run(
+      `MATCH (d:DistributionCenter {centerId: $centerId})-[r:AUDITS]->(s:Supplier {supplierId: $supplierId})
+       SET ${setClause} RETURN r`,
+      { centerId: req.params.centerId, supplierId: req.params.supplierId, ...props }
+    )
+    if (!result.records.length) return res.status(404).json({ error: 'Relationship not found' })
+    res.json(result.records[0].get('r').properties)
+  } catch (err) { next(err) } finally { await session.close() }
+})
+
+router.delete('/audits/:centerId/:supplierId', async (req, res, next) => {
+  const session = getSession()
+  try {
+    await session.run(`MATCH (d:DistributionCenter {centerId: $centerId})-[r:AUDITS]->(s:Supplier {supplierId: $supplierId}) DELETE r`, { centerId: req.params.centerId, supplierId: req.params.supplierId })
+    res.json({ message: 'Deleted' })
   } catch (err) { next(err) } finally { await session.close() }
 })
 

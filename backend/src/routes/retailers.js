@@ -6,14 +6,14 @@ const router = Router()
 router.get('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { region, isPremiumPartner } = req.query
+    const { city, isActive } = req.query
     let conditions = []
     const params = {}
-    if (region) { conditions.push('r.region = $region'); params.region = region }
-    if (isPremiumPartner !== undefined) { conditions.push('r.isPremiumPartner = $isPremiumPartner'); params.isPremiumPartner = isPremiumPartner === 'true' }
+    if (city) { conditions.push('r.city = $city'); params.city = city }
+    if (isActive !== undefined) { conditions.push('r.isActive = $isActive'); params.isActive = isActive === 'true' }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const result = await session.run(
-      `MATCH (r:Retailer) ${where} RETURN r ORDER BY r.name`,
+      `MATCH (r:Retailer) ${where} RETURN r ORDER BY r.storeName`,
       params
     )
     res.json(result.records.map(r => r.get('r').properties))
@@ -35,18 +35,21 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { retailerId, name, region, monthlyOrders, isPremiumPartner, productCategories, contractStart } = req.body
+    const { retailerId, storeName, city, type, isActive, rating } = req.body
     const result = await session.run(
       `CREATE (r:Retailer {
         retailerId: $retailerId,
-        name: $name,
-        region: $region,
-        monthlyOrders: $monthlyOrders,
-        isPremiumPartner: $isPremiumPartner,
-        productCategories: $productCategories,
-        contractStart: date($contractStart)
+        storeName: $storeName,
+        city: $city,
+        type: $type,
+        isActive: $isActive,
+        rating: $rating
       }) RETURN r`,
-      { retailerId, name, region, monthlyOrders, isPremiumPartner, productCategories, contractStart }
+      { 
+        retailerId, storeName, city, type, 
+        isActive: isActive === true, 
+        rating: parseFloat(rating) 
+      }
     )
     res.status(201).json(result.records[0].get('r').properties)
   } catch (err) { next(err) } finally { await session.close() }
@@ -66,14 +69,14 @@ router.patch('/:id/properties', async (req, res, next) => {
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-router.patch('/bulk/by-region', async (req, res, next) => {
+router.patch('/bulk/by-city', async (req, res, next) => {
   const session = getSession()
   try {
-    const { region, ...props } = req.body
+    const { city, ...props } = req.body
     const setClause = Object.keys(props).map(k => `r.${k} = $${k}`).join(', ')
     const result = await session.run(
-      `MATCH (r:Retailer {region: $region}) SET ${setClause} RETURN count(r) AS updated`,
-      { region, ...props }
+      `MATCH (r:Retailer {city: $city}) SET ${setClause} RETURN count(r) AS updated`,
+      { city, ...props }
     )
     res.json({ updated: result.records[0].get('updated').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
@@ -96,11 +99,11 @@ router.delete('/:id/properties', async (req, res, next) => {
 router.delete('/bulk/properties', async (req, res, next) => {
   const session = getSession()
   try {
-    const { region, fields } = req.body
+    const { city, fields } = req.body
     const removeClause = fields.map(f => `r.${f}`).join(', ')
     await session.run(
-      `MATCH (r:Retailer {region: $region}) REMOVE ${removeClause}`,
-      { region }
+      `MATCH (r:Retailer {city: $city}) REMOVE ${removeClause}`,
+      { city }
     )
     res.json({ message: 'Properties removed' })
   } catch (err) { next(err) } finally { await session.close() }
@@ -117,28 +120,27 @@ router.delete('/:id', async (req, res, next) => {
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-router.delete('/bulk/by-region/:region', async (req, res, next) => {
+router.delete('/bulk/by-city/:city', async (req, res, next) => {
   const session = getSession()
   try {
     const result = await session.run(
-      `MATCH (r:Retailer {region: $region}) DETACH DELETE r RETURN count(r) AS deleted`,
-      { region: req.params.region }
+      `MATCH (r:Retailer {city: $city}) DETACH DELETE r RETURN count(r) AS deleted`,
+      { city: req.params.city }
     )
     res.json({ deleted: result.records[0].get('deleted').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
 })
 
-router.get('/stats/by-region', async (req, res, next) => {
+router.get('/stats/by-city', async (req, res, next) => {
   const session = getSession()
   try {
     const result = await session.run(
       `MATCH (r:Retailer)
-       RETURN r.region AS region, sum(r.monthlyOrders) AS totalOrders, count(r) AS total
-       ORDER BY totalOrders DESC`
+       RETURN r.city AS city, count(r) AS total
+       ORDER BY total DESC`
     )
     res.json(result.records.map(r => ({
-      region: r.get('region'),
-      totalOrders: r.get('totalOrders').toNumber(),
+      city: r.get('city'),
       total: r.get('total').toNumber()
     })))
   } catch (err) { next(err) } finally { await session.close() }

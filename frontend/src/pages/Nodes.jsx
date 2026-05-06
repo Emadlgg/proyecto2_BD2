@@ -1,369 +1,398 @@
 import React, { useState, useEffect } from 'react';
-import { getSuppliers } from '../services/api';
-import { Search, Plus, Trash2, Edit, X, Zap } from 'lucide-react';
+import { Search, Plus, Trash2, Edit, X, RefreshCw } from 'lucide-react';
 
-const Nodes = () => {
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  const [newNode, setNewNode] = useState({ name: '', country: '', rating: '', isActive: true, isPreferred: false });
-  const [editingNode, setEditingNode] = useState({ id: '', name: '', country: '', rating: '', isActive: true });
-  
-  const [bulkCountry, setBulkCountry] = useState('');
-  const [bulkUpdateStatus, setBulkUpdateStatus] = useState(true);
+const API = 'http://localhost:3000/api';
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+// Formatea cualquier valor de Neo4j (fechas, enteros, booleanos, arrays)
+const fmt = (v) => {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'boolean') return v ? 'Sí' : 'No';
+  if (Array.isArray(v)) return v.join(', ');
+  // Neo4j Integer: { low, high }
+  if (typeof v === 'object' && 'low' in v && 'high' in v) return v.low;
+  // Neo4j Date: { year, month, day }
+  if (typeof v === 'object' && 'year' in v) {
+    const y = fmt(v.year), m = String(fmt(v.month)).padStart(2,'0'), d = String(fmt(v.day)).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+};
 
-  const fetchData = () => {
+const ENTITIES = {
+  suppliers: {
+    label: 'Proveedores', idField: 'supplierId', endpoint: `${API}/suppliers`,
+    color: '#38bdf8', bulkField: 'country', bulkLabel: 'País',
+    supports2Labels: true, secondLabel: 'PreferredSupplier',
+    fields: [
+      { key: 'supplierId', label: 'ID', required: true },
+      { key: 'name', label: 'Nombre', required: true },
+      { key: 'country', label: 'País', required: true },
+      { key: 'rating', label: 'Rating', type: 'number', required: true },
+      { key: 'isActive', label: 'Activo', type: 'boolean' },
+      { key: 'certifications', label: 'Certificaciones (sep ;)', placeholder: 'ISO9001;ISO14001' },
+      { key: 'joinedDate', label: 'Fecha Ingreso', type: 'date', required: true },
+    ],
+  },
+  components: {
+    label: 'Componentes', idField: 'componentId', endpoint: `${API}/components`,
+    color: '#facc15', bulkField: 'category', bulkLabel: 'Categoría',
+    fields: [
+      { key: 'componentId', label: 'ID', required: true },
+      { key: 'name', label: 'Nombre', required: true },
+      { key: 'category', label: 'Categoría', required: true },
+      { key: 'material', label: 'Material', required: true },
+      { key: 'unitWeight', label: 'Peso', type: 'number', required: true },
+      { key: 'isHazardous', label: 'Peligroso', type: 'boolean' },
+      { key: 'manufactureDate', label: 'Fecha Fabr.', type: 'date', required: true },
+    ],
+  },
+  manufacturers: {
+    label: 'Fabricantes', idField: 'manufacturerId', endpoint: `${API}/manufacturers`,
+    color: '#a78bfa', bulkField: 'region', bulkLabel: 'Región',
+    fields: [
+      { key: 'manufacturerId', label: 'ID', required: true },
+      { key: 'name', label: 'Nombre', required: true },
+      { key: 'region', label: 'Región', required: true },
+      { key: 'foundedYear', label: 'Año Fundación', type: 'number', required: true },
+      { key: 'rating', label: 'Rating', type: 'number', required: true },
+      { key: 'isActive', label: 'Activo', type: 'boolean' },
+      { key: 'complianceList', label: 'Cumplimiento (sep ;)', placeholder: 'ISO9001;REACH' },
+    ],
+  },
+  products: {
+    label: 'Productos', idField: 'productId', endpoint: `${API}/products`,
+    color: '#34d399', bulkField: 'description', bulkLabel: 'Descripción',
+    fields: [
+      { key: 'productId', label: 'ID', required: true },
+      { key: 'name', label: 'Nombre', required: true },
+      { key: 'description', label: 'Descripción', required: true },
+      { key: 'launchDate', label: 'Fecha Lanz.', type: 'date', required: true },
+      { key: 'isDiscontinued', label: 'Descontinuado', type: 'boolean' },
+      { key: 'dimensions', label: 'Dimensiones', placeholder: '10x20x30' },
+    ],
+  },
+  'distribution-centers': {
+    label: 'Centros Dist.', idField: 'centerId', endpoint: `${API}/distribution-centers`,
+    color: '#fb923c', bulkField: 'location', bulkLabel: 'Ubicación',
+    fields: [
+      { key: 'centerId', label: 'ID', required: true },
+      { key: 'location', label: 'Ubicación', required: true },
+      { key: 'capacity', label: 'Capacidad', type: 'number', required: true },
+      { key: 'isActive', label: 'Activo', type: 'boolean' },
+      { key: 'openedDate', label: 'Fecha Apert.', type: 'date', required: true },
+      { key: 'contactEmail', label: 'Email', type: 'email' },
+    ],
+  },
+  retailers: {
+    label: 'Minoristas', idField: 'retailerId', endpoint: `${API}/retailers`,
+    color: '#f472b6', bulkField: 'city', bulkLabel: 'Ciudad',
+    fields: [
+      { key: 'retailerId', label: 'ID', required: true },
+      { key: 'storeName', label: 'Nombre Tienda', required: true },
+      { key: 'city', label: 'Ciudad', required: true },
+      { key: 'type', label: 'Tipo', placeholder: 'Supermarket' },
+      { key: 'isActive', label: 'Activo', type: 'boolean' },
+      { key: 'rating', label: 'Rating', type: 'number', required: true },
+    ],
+  },
+};
+
+const emptyForm = (fields) => Object.fromEntries(fields.map(f => [f.key, f.type === 'boolean' ? false : '']));
+
+const Field = ({ f, value, onChange }) => {
+  if (f.type === 'boolean') return (
+    <div className="check-row">
+      <input type="checkbox" id={f.key} checked={!!value} onChange={e => onChange(e.target.checked)} />
+      <label htmlFor={f.key}>{f.label}</label>
+    </div>
+  );
+  return (
+    <input
+      type={f.type || 'text'}
+      step={f.type === 'number' ? 'any' : undefined}
+      className="form-input"
+      value={value ?? ''}
+      placeholder={f.placeholder || ''}
+      onChange={e => onChange(e.target.value)}
+    />
+  );
+};
+
+export default function Nodes() {
+  const [tab, setTab] = useState('suppliers');
+  const [nodes, setNodes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [addForm, setAddForm] = useState({});
+  const [editForm, setEditForm] = useState({});
+  const [editId, setEditId] = useState('');
+  const [use2Labels, setUse2Labels] = useState(false);
+  const [bulkVal, setBulkVal] = useState('');
+  const [msg, setMsg] = useState(null);
+
+  const cfg = ENTITIES[tab];
+
+  const flash = (text, type = 'success') => {
+    setMsg({ text, type });
+    setTimeout(() => setMsg(null), 4000);
+  };
+
+  const load = async () => {
     setLoading(true);
-    getSuppliers()
-      .then(data => {
-        setSuppliers(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
-  };
-
-  const handleAddNode = async (e) => {
-    e.preventDefault();
     try {
-      const endpoint = newNode.isPreferred ? 'http://localhost:3000/api/suppliers/preferred' : 'http://localhost:3000/api/suppliers';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplierId: `SUP-${Math.floor(Math.random() * 100000)}`,
-          name: newNode.name,
-          country: newNode.country,
-          rating: parseFloat(newNode.rating) || 5.0,
-          isActive: newNode.isActive,
-          certifications: ['ISO9001'],
-          joinedDate: new Date().toISOString().split('T')[0]
-        })
-      });
-      if (response.ok) {
-        setShowAddModal(false);
-        setNewNode({ name: '', country: '', rating: '', isActive: true, isPreferred: false });
-        fetchData();
-      }
-    } catch (error) {
-      console.error('Error adding node:', error);
-    }
+      const r = await fetch(cfg.endpoint);
+      const d = await r.json();
+      setNodes(Array.isArray(d) ? d : []);
+    } catch { setNodes([]); }
+    setLoading(false);
   };
 
-  const handleEditNode = async (e) => {
+  useEffect(() => { setSearch(''); setAddForm(emptyForm(cfg.fields)); load(); }, [tab]);
+
+  const doAdd = async (e) => {
     e.preventDefault();
-    try {
-      const response = await fetch(`http://localhost:3000/api/suppliers/${editingNode.id}/properties`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editingNode.name,
-          country: editingNode.country,
-          rating: parseFloat(editingNode.rating),
-          isActive: editingNode.isActive
-        })
-      });
-      if (response.ok) {
-        setShowEditModal(false);
-        fetchData();
-      }
-    } catch (error) {
-      console.error('Error editing node:', error);
-    }
-  };
-
-  const openEditModal = (sup) => {
-    setEditingNode({
-      id: sup.supplierId || sup.id,
-      name: sup.name || '',
-      country: sup.country || '',
-      rating: sup.rating || '',
-      isActive: sup.isActive !== undefined ? sup.isActive : true
+    const url = use2Labels && cfg.supports2Labels ? `${cfg.endpoint}/preferred` : cfg.endpoint;
+    const body = { ...addForm };
+    cfg.fields.forEach(f => {
+      if (f.type === 'number') body[f.key] = parseFloat(body[f.key]) || 0;
+      if (f.type === 'boolean') body[f.key] = !!body[f.key];
     });
-    setShowEditModal(true);
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) { flash('Nodo creado'); setShowAdd(false); setAddForm(emptyForm(cfg.fields)); load(); }
+    else flash('Error al crear el nodo', 'error');
   };
 
-  const handleDelete = async (id) => {
-    if(window.confirm('¿Estás seguro de eliminar este nodo?')) {
-      try {
-        await fetch(`http://localhost:3000/api/suppliers/${id}`, { method: 'DELETE' });
-        fetchData();
-      } catch (error) {
-        console.error('Error deleting:', error);
-      }
-    }
-  };
-
-  const handleDeleteProperty = async (e) => {
+  const doEdit = async (e) => {
     e.preventDefault();
-    if(window.confirm('¿Estás seguro de eliminar la propiedad Rating de este nodo?')) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/suppliers/${editingNode.id}/properties`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields: ['rating'] })
-        });
-        if(response.ok) {
-          setShowEditModal(false);
-          fetchData();
-        }
-      } catch (error) {
-        console.error('Error delete property:', error);
-      }
-    }
+    const body = { ...editForm };
+    delete body[cfg.idField];
+    cfg.fields.forEach(f => {
+      if (f.type === 'number' && body[f.key]) body[f.key] = parseFloat(body[f.key]) || 0;
+      if (f.type === 'boolean') body[f.key] = !!body[f.key];
+    });
+    const r = await fetch(`${cfg.endpoint}/${editId}/properties`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) { flash('Nodo actualizado'); setShowEdit(false); load(); }
+    else flash('No se encontró el nodo', 'error');
   };
 
-  const handleBulkUpdate = async () => {
-    if(!bulkCountry) return alert('Por favor ingresa un país');
-    if(window.confirm(`¿Estás seguro de actualizar el estado de TODOS los proveedores de ${bulkCountry}?`)) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/suppliers/bulk/by-country`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ country: bulkCountry, isActive: bulkUpdateStatus })
-        });
-        const data = await response.json();
-        alert(`Se actualizaron ${data.updated} nodos.`);
-        setBulkCountry('');
-        fetchData();
-      } catch (error) {
-        console.error('Error bulk update:', error);
-      }
-    }
+  const doDelete = async (id) => {
+    if (!confirm(`¿Eliminar ${id}?`)) return;
+    await fetch(`${cfg.endpoint}/${id}`, { method: 'DELETE' });
+    flash('Nodo eliminado'); load();
   };
 
-  const handleBulkDeleteProperty = async () => {
-    if(!bulkCountry) return alert('Por favor ingresa un país');
-    if(window.confirm(`¿Estás seguro de ELIMINAR la propiedad 'rating' de TODOS los proveedores de ${bulkCountry}?`)) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/suppliers/bulk/properties`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ country: bulkCountry, fields: ['rating'] })
-        });
-        if(response.ok) {
-          alert('Propiedad eliminada masivamente con éxito.');
-          setBulkCountry('');
-          fetchData();
-        }
-      } catch (error) {
-        console.error('Error bulk delete properties:', error);
-      }
-    }
+  const doDeleteProp = async (id) => {
+    const prop = cfg.fields.find(f => f.key !== cfg.idField && f.type !== 'boolean')?.key;
+    if (!prop || !confirm(`¿Eliminar propiedad "${prop}" de ${id}?`)) return;
+    await fetch(`${cfg.endpoint}/${id}/properties`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: [prop] }) });
+    flash(`Propiedad eliminada`); load();
   };
 
-  const handleBulkDelete = async () => {
-    if(!bulkCountry) return alert('Por favor ingresa un país');
-    if(window.confirm(`¿Estás seguro de eliminar TODOS los proveedores de ${bulkCountry}?`)) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/suppliers/bulk/by-country/${encodeURIComponent(bulkCountry)}`, { method: 'DELETE' });
-        const data = await response.json();
-        alert(`Se eliminaron ${data.deleted} nodos.`);
-        setBulkCountry('');
-        fetchData();
-      } catch (error) {
-        console.error('Error bulk delete:', error);
-      }
-    }
+  const doBulkUpdate = async () => {
+    if (!bulkVal.trim()) return flash('Ingresa un valor', 'error');
+    const r = await fetch(`${cfg.endpoint}/bulk/by-${cfg.bulkField}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [cfg.bulkField]: bulkVal, isActive: true }) });
+    if (r.ok) { const d = await r.json(); flash(`${d.updated} nodos actualizados`); load(); }
   };
 
-  const filteredSuppliers = suppliers.filter(sup => 
-    (sup.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (sup.country || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const doBulkDelete = async () => {
+    if (!bulkVal.trim() || !confirm(`¿Eliminar todos con ${cfg.bulkField} = "${bulkVal}"?`)) return;
+    const r = await fetch(`${cfg.endpoint}/bulk/by-${cfg.bulkField}/${encodeURIComponent(bulkVal)}`, { method: 'DELETE' });
+    if (r.ok) { const d = await r.json(); flash(`${d.deleted} nodos eliminados`); load(); }
+  };
+
+  const doBulkDeleteProp = async () => {
+    if (!bulkVal.trim()) return flash('Ingresa un valor', 'error');
+    const prop = cfg.fields.find(f => f.key !== cfg.idField && f.type !== 'boolean')?.key;
+    if (!prop) return;
+    await fetch(`${cfg.endpoint}/bulk/properties`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [cfg.bulkField]: bulkVal, fields: [prop] }) });
+    flash('Propiedades eliminadas en masa'); load();
+  };
+
+  const openEdit = (n) => {
+    setEditId(n[cfg.idField]);
+    // Preparamos los datos para el formulario (aplanar objetos de Neo4j)
+    const prepared = {};
+    Object.entries(n).forEach(([k, v]) => {
+      if (v && typeof v === 'object' && 'year' in v) {
+        // Formato YYYY-MM-DD para <input type="date">
+        const y = fmt(v.year), m = String(fmt(v.month)).padStart(2,'0'), d = String(fmt(v.day)).padStart(2,'0');
+        prepared[k] = `${y}-${m}-${d}`;
+      } else if (v && typeof v === 'object' && 'low' in v) {
+        prepared[k] = v.low;
+      } else {
+        prepared[k] = v;
+      }
+    });
+    setEditForm(prepared);
+    setShowEdit(true);
+  };
+
+  const filtered = nodes.filter(n =>
+    !search || Object.values(n).some(v => String(fmt(v)).toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
-    <div className="nodes-page">
+    <div style={{ marginTop: '1.5rem' }}>
+      {/* Header */}
       <div className="page-header">
         <div>
-          <h1>Gestión de Entidades</h1>
-          <p className="text-muted" style={{ color: 'var(--text-muted)' }}>Visualiza y administra los nodos del grafo.</p>
+          <h1 className="page-title">Entidades</h1>
+          <p className="page-subtitle">Gestión de nodos del grafo</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-          <Plus size={18} /> Agregar Nodo
+        <button className="btn btn-primary" onClick={() => { setAddForm(emptyForm(cfg.fields)); setUse2Labels(false); setShowAdd(true); }}>
+          <Plus size={15}/> Nuevo
         </button>
       </div>
 
-      <div className="dashboard-grid" style={{ marginBottom: '1.5rem' }}>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h3><Zap size={18} style={{ display: 'inline', color: '#f59e0b' }}/> Acciones Masivas por País</h3>
-          <div>
-            <label className="form-label">País Objetivo (Target Country)</label>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="Ej. USA, Germany..." 
-              value={bulkCountry}
-              onChange={(e) => setBulkCountry(e.target.value)}
-            />
+      {msg && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
+
+      {/* Tabs */}
+      <div className="tabs">
+        {Object.entries(ENTITIES).map(([key, e]) => (
+          <button key={key} className={`tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>
+            {e.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Operaciones masivas */}
+      <div className="section">
+        <div className="section-title">Operaciones masivas — filtrar por {cfg.bulkLabel || cfg.bulkField}</div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <input type="text" className="form-input" placeholder={`Ej. USA, Electronics...`} value={bulkVal} onChange={e => setBulkVal(e.target.value)} />
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '0.5rem' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input type="checkbox" id="bulkStatus" checked={bulkUpdateStatus} onChange={e => setBulkUpdateStatus(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-              <label htmlFor="bulkStatus" style={{ marginBottom: 0 }}>Marcar como Activo</label>
-            </div>
-            <button className="btn btn-outline" style={{ borderColor: '#f59e0b', color: '#f59e0b' }} onClick={handleBulkUpdate}>
-              Actualizar Todos
-            </button>
-            <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }} onClick={handleBulkDeleteProperty}>
-              Eliminar Propiedad (Rating)
-            </button>
-            <button className="btn btn-danger" onClick={handleBulkDelete}>
-              Eliminar Todos
-            </button>
-          </div>
+          <button className="btn btn-secondary btn-sm" onClick={doBulkUpdate}>Actualizar todos</button>
+          <button className="btn btn-warning btn-sm" onClick={doBulkDeleteProp}>Eliminar propiedad (masivo)</button>
+          <button className="btn btn-danger btn-sm" onClick={doBulkDelete}>Eliminar todos</button>
         </div>
       </div>
 
-      <div className="glass-panel" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="Filtrar por nombre o país en tiempo real..." 
-              style={{ paddingLeft: '2.5rem' }}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+      {/* Table */}
+      <div className="card">
+        <div className="toolbar">
+          <div className="search-box">
+            <Search size={14} className="search-icon" />
+            <input type="text" className="form-input" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={13}/></button>
+          <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{filtered.length} registros</span>
         </div>
 
-        {loading ? (
-          <div className="loader"></div>
-        ) : (
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Nombre</th>
-                  <th>Etiquetas</th>
-                  <th>País</th>
-                  <th>Rating</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSuppliers.slice(0, 10).map((sup, idx) => {
-                  const actualId = sup.supplierId || sup.id || `SUP-${idx}`;
-                  return (
-                  <tr key={idx}>
-                    <td><strong>{actualId}</strong></td>
-                    <td>{sup.name || 'Desconocido'}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                        {sup.labels?.map((lbl, i) => (
-                          <span key={i} style={{ 
-                            background: lbl === 'PreferredSupplier' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', 
-                            color: lbl === 'PreferredSupplier' ? '#f59e0b' : '#3b82f6', 
-                            padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' 
-                          }}>
-                            {lbl}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>{sup.country || 'N/A'}</td>
-                    <td>{sup.rating !== undefined && sup.rating !== null ? sup.rating.toFixed(1) : <span style={{color: '#9ca3af', fontStyle: 'italic'}}>N/A</span>}</td>
-                    <td>
-                      <span className={`badge ${sup.isActive ? 'badge-success' : 'badge-warning'}`}>
-                        {sup.isActive ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }} onClick={() => openEditModal(sup)}><Edit size={16} /></button>
-                        <button className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }} onClick={() => handleDelete(actualId)}><Trash2 size={16} /></button>
-                      </div>
-                    </td>
+        {loading ? <div className="loader" /> : (() => {
+          // Columnas dinámicas: usa las llaves del primer nodo real
+          const sample = filtered[0];
+          const dynCols = sample
+            ? Object.keys(sample).filter(k => k !== cfg.idField && k !== 'labels').slice(0, 4)
+            : cfg.fields.filter(f => f.key !== cfg.idField).slice(0, 4).map(f => f.key);
+          return (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 120 }}>ID</th>
+                    {dynCols.map(k => {
+                      // Buscamos si existe un label para esta propiedad en la config
+                      const field = cfg.fields.find(f => f.key === k);
+                      return <th key={k}>{field ? field.label : k}</th>;
+                    })}
+                    <th style={{ textAlign: 'right' }}>Acciones</th>
                   </tr>
-                )})}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={dynCols.length + 2} className="empty">No hay registros</td></tr>
+                  )}
+                  {filtered.slice(0, 20).map((n, i) => {
+                    const id = fmt(n[cfg.idField]) ?? `#${i}`;
+                    return (
+                      <tr key={i}>
+                        <td style={{ color: cfg.color, fontWeight: 600, fontSize: '0.85rem' }}>{id}</td>
+                        {dynCols.map(k => {
+                          const v = n[k];
+                          const isBool = typeof v === 'boolean' || (typeof v === 'string' && (v === 'true' || v === 'false'));
+                          return (
+                            <td key={k}>
+                              {isBool
+                                ? <span className={`badge ${v === true || v === 'true' ? 'badge-green' : 'badge-yellow'}`}>{v === true || v === 'true' ? 'sí' : 'no'}</span>
+                                : String(fmt(v)).slice(0, 32)}
+                            </td>
+                          );
+                        })}
+                        <td>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => openEdit(n)}>
+                              <Edit size={13}/>
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={() => doDelete(n[cfg.idField])}>
+                              <Trash2 size={13}/>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filtered.length > 20 && (
+                <div style={{ padding: '0.65rem 1rem', fontSize: '0.8rem', color: '#6b7280', borderTop: '1px solid #374151' }}>
+                  Mostrando 20 de {filtered.length} — usa el buscador para filtrar
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="glass-panel" style={{ width: '400px', padding: '2rem', position: 'relative' }}>
-            <button 
-              onClick={() => setShowAddModal(false)} 
-              style={{ position: 'absolute', right: '1rem', top: '1rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-            >
-              <X size={24} />
-            </button>
-            <h2 style={{ marginBottom: '1.5rem' }}>Agregar Nuevo Proveedor</h2>
-            <form onSubmit={handleAddNode}>
-              <div className="form-group">
-                <label className="form-label">Nombre</label>
-                <input required type="text" className="form-control" value={newNode.name} onChange={e => setNewNode({...newNode, name: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">País</label>
-                <input required type="text" className="form-control" value={newNode.country} onChange={e => setNewNode({...newNode, country: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Rating (1.0 - 5.0)</label>
-                <input required type="number" step="any" min="1" max="5" className="form-control" value={newNode.rating} onChange={e => setNewNode({...newNode, rating: e.target.value})} />
-              </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
-                <input type="checkbox" id="addStatus" checked={newNode.isActive} onChange={e => setNewNode({...newNode, isActive: e.target.checked})} style={{ width: '18px', height: '18px' }} />
-                <label htmlFor="addStatus" className="form-label" style={{ marginBottom: 0 }}>El proveedor está Activo</label>
-              </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <input type="checkbox" id="addPreferred" checked={newNode.isPreferred} onChange={e => setNewNode({...newNode, isPreferred: e.target.checked})} style={{ width: '18px', height: '18px' }} />
-                <label htmlFor="addPreferred" className="form-label" style={{ marginBottom: 0 }}>Proveedor Preferido (Agrega 2da Etiqueta)</label>
-              </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Crear Proveedor</button>
+      {/* Add Modal */}
+      {showAdd && (
+        <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowAdd(false)}>
+          <div className="modal">
+            <div className="modal-title">
+              Crear {cfg.label.slice(0, -1)}
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(false)}><X size={14}/></button>
+            </div>
+            <form onSubmit={doAdd}>
+              {cfg.fields.map(f => (
+                <div className="form-group" key={f.key}>
+                  {f.type !== 'boolean' && <label className="form-label">{f.label}</label>}
+                  <Field f={f} value={addForm[f.key]} onChange={v => setAddForm(p => ({ ...p, [f.key]: v }))} />
+                </div>
+              ))}
+              {cfg.supports2Labels && (
+                <div className="check-row" style={{ marginBottom: '1rem' }}>
+                  <input type="checkbox" id="lbl2" checked={use2Labels} onChange={e => setUse2Labels(e.target.checked)} />
+                  <label htmlFor="lbl2">Agregar label extra: <b>{cfg.secondLabel}</b></label>
+                </div>
+              )}
+              <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Crear</button>
             </form>
           </div>
         </div>
       )}
 
-      {showEditModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="glass-panel" style={{ width: '400px', padding: '2rem', position: 'relative' }}>
-            <button 
-              onClick={() => setShowEditModal(false)} 
-              style={{ position: 'absolute', right: '1rem', top: '1rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-            >
-              <X size={24} />
-            </button>
-            <h2 style={{ marginBottom: '1.5rem' }}>Editar Proveedor</h2>
-            <form onSubmit={handleEditNode}>
-              <div className="form-group">
-                <label className="form-label">Nombre</label>
-                <input required type="text" className="form-control" value={editingNode.name} onChange={e => setEditingNode({...editingNode, name: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">País</label>
-                <input required type="text" className="form-control" value={editingNode.country} onChange={e => setEditingNode({...editingNode, country: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Rating (1.0 - 5.0)</label>
-                <input required type="number" step="any" min="1" max="5" className="form-control" value={editingNode.rating} onChange={e => setEditingNode({...editingNode, rating: e.target.value})} />
-              </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
-                <input type="checkbox" id="editStatus" checked={editingNode.isActive} onChange={e => setEditingNode({...editingNode, isActive: e.target.checked})} style={{ width: '18px', height: '18px' }} />
-                <label htmlFor="editStatus" className="form-label" style={{ marginBottom: 0 }}>El proveedor está Activo</label>
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Cambios</button>
-                <button type="button" className="btn btn-outline" style={{ flex: 1, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleDeleteProperty}>
-                  Eliminar Prop. Rating
+      {/* Edit Modal */}
+      {showEdit && (
+        <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowEdit(false)}>
+          <div className="modal">
+            <div className="modal-title">
+              Editar — {editId}
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowEdit(false)}><X size={14}/></button>
+            </div>
+            <form onSubmit={doEdit}>
+              {cfg.fields.filter(f => f.key !== cfg.idField).map(f => (
+                <div className="form-group" key={f.key}>
+                  {f.type !== 'boolean' && <label className="form-label">{f.label}</label>}
+                  <Field f={f} value={editForm[f.key]} onChange={v => setEditForm(p => ({ ...p, [f.key]: v }))} />
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar</button>
+                <button type="button" className="btn btn-warning" style={{ flex: 1 }} onClick={() => { doDeleteProp(editId); setShowEdit(false); }}>
+                  Eliminar propiedad
                 </button>
               </div>
             </form>
@@ -372,6 +401,4 @@ const Nodes = () => {
       )}
     </div>
   );
-};
-
-export default Nodes;
+}

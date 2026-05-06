@@ -6,10 +6,10 @@ const router = Router()
 router.get('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { isOperational } = req.query
+    const { isActive } = req.query
     let conditions = []
     const params = {}
-    if (isOperational !== undefined) { conditions.push('d.isOperational = $isOperational'); params.isOperational = isOperational === 'true' }
+    if (isActive !== undefined) { conditions.push('d.isActive = $isActive'); params.isActive = isActive === 'true' }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const result = await session.run(
       `MATCH (d:DistributionCenter) ${where} RETURN d ORDER BY d.location`,
@@ -34,17 +34,22 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { centerId, location, storageCapacity, currentLoad, isOperational, operatingSince } = req.body
+    const { centerId, location, capacity, isActive, openedDate, contactEmail } = req.body
     const result = await session.run(
       `CREATE (d:DistributionCenter {
         centerId: $centerId,
         location: $location,
-        storageCapacity: $storageCapacity,
-        currentLoad: $currentLoad,
-        isOperational: $isOperational,
-        operatingSince: date($operatingSince)
+        capacity: $capacity,
+        isActive: $isActive,
+        openedDate: date($openedDate),
+        contactEmail: $contactEmail
       }) RETURN d`,
-      { centerId, location, storageCapacity, currentLoad, isOperational, operatingSince }
+      { 
+        centerId, location, contactEmail,
+        capacity: parseInt(capacity), 
+        isActive: isActive === true, 
+        openedDate 
+      }
     )
     res.status(201).json(result.records[0].get('d').properties)
   } catch (err) { next(err) } finally { await session.close() }
@@ -67,10 +72,10 @@ router.patch('/:id/properties', async (req, res, next) => {
 router.patch('/bulk/set-operational', async (req, res, next) => {
   const session = getSession()
   try {
-    const { isOperational } = req.body
+    const { isActive } = req.body
     const result = await session.run(
-      `MATCH (d:DistributionCenter) SET d.isOperational = $isOperational RETURN count(d) AS updated`,
-      { isOperational }
+      `MATCH (d:DistributionCenter) SET d.isActive = $isActive RETURN count(d) AS updated`,
+      { isActive: isActive === true }
     )
     res.json({ updated: result.records[0].get('updated').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
@@ -115,7 +120,7 @@ router.delete('/bulk/inactive', async (req, res, next) => {
   const session = getSession()
   try {
     const result = await session.run(
-      `MATCH (d:DistributionCenter {isOperational: false}) DETACH DELETE d RETURN count(d) AS deleted`
+      `MATCH (d:DistributionCenter {isActive: false}) DETACH DELETE d RETURN count(d) AS deleted`
     )
     res.json({ deleted: result.records[0].get('deleted').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
@@ -127,16 +132,12 @@ router.get('/stats/capacity', async (req, res, next) => {
     const result = await session.run(
       `MATCH (d:DistributionCenter)
        RETURN d.location AS location,
-              d.storageCapacity AS capacity,
-              d.currentLoad AS load,
-              round(toFloat(d.currentLoad) / d.storageCapacity * 100, 2) AS usagePct
-       ORDER BY usagePct DESC`
+              d.capacity AS capacity
+       ORDER BY capacity DESC`
     )
     res.json(result.records.map(r => ({
       location: r.get('location'),
-      capacity: r.get('capacity').toNumber(),
-      load: r.get('load').toNumber(),
-      usagePct: r.get('usagePct')
+      capacity: r.get('capacity').toNumber()
     })))
   } catch (err) { next(err) } finally { await session.close() }
 })

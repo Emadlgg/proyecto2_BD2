@@ -36,19 +36,17 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { productId, name, category, price, weight, inProduction, tags, launchDate } = req.body
+    const { productId, name, description, launchDate, isDiscontinued, dimensions } = req.body
     const result = await session.run(
       `CREATE (p:Product {
         productId: $productId,
         name: $name,
-        category: $category,
-        price: $price,
-        weight: $weight,
-        inProduction: $inProduction,
-        tags: $tags,
-        launchDate: date($launchDate)
+        description: $description,
+        launchDate: date($launchDate),
+        isDiscontinued: $isDiscontinued,
+        dimensions: $dimensions
       }) RETURN p`,
-      { productId, name, category, price, weight, inProduction, tags, launchDate }
+      { productId, name, description, launchDate, isDiscontinued: isDiscontinued === true, dimensions }
     )
     res.status(201).json(result.records[0].get('p').properties)
   } catch (err) { next(err) } finally { await session.close() }
@@ -58,10 +56,20 @@ router.patch('/:id/properties', async (req, res, next) => {
   const session = getSession()
   try {
     const props = req.body
-    const setClause = Object.keys(props).map(k => `p.${k} = $${k}`).join(', ')
+    // Convertir fechas si vienen en el body
+    if (props.launchDate) props.launchDate = `date('${props.launchDate}')`
+    
+    const setClause = Object.keys(props).map(k => {
+       if (k === 'launchDate') return `p.${k} = ${props[k]}`
+       return `p.${k} = $${k}`
+    }).join(', ')
+    
+    const cypherProps = { ...props }
+    if (cypherProps.launchDate) delete cypherProps.launchDate
+
     const result = await session.run(
       `MATCH (p:Product {productId: $id}) SET ${setClause} RETURN p`,
-      { id: req.params.id, ...props }
+      { id: req.params.id, ...cypherProps }
     )
     if (!result.records.length) return res.status(404).json({ error: 'Not found' })
     res.json(result.records[0].get('p').properties)
@@ -71,11 +79,11 @@ router.patch('/:id/properties', async (req, res, next) => {
 router.patch('/bulk/by-category', async (req, res, next) => {
   const session = getSession()
   try {
-    const { category, ...props } = req.body
+    const { description, ...props } = req.body
     const setClause = Object.keys(props).map(k => `p.${k} = $${k}`).join(', ')
     const result = await session.run(
-      `MATCH (p:Product {category: $category}) SET ${setClause} RETURN count(p) AS updated`,
-      { category, ...props }
+      `MATCH (p:Product {description: $description}) SET ${setClause} RETURN count(p) AS updated`,
+      { description, ...props }
     )
     res.json({ updated: result.records[0].get('updated').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
@@ -98,11 +106,11 @@ router.delete('/:id/properties', async (req, res, next) => {
 router.delete('/bulk/properties', async (req, res, next) => {
   const session = getSession()
   try {
-    const { category, fields } = req.body
+    const { description, fields } = req.body
     const removeClause = fields.map(f => `p.${f}`).join(', ')
     await session.run(
-      `MATCH (p:Product {category: $category}) REMOVE ${removeClause}`,
-      { category }
+      `MATCH (p:Product {description: $description}) REMOVE ${removeClause}`,
+      { description }
     )
     res.json({ message: 'Properties removed' })
   } catch (err) { next(err) } finally { await session.close() }
@@ -122,8 +130,9 @@ router.delete('/:id', async (req, res, next) => {
 router.delete('/bulk/by-category/:category', async (req, res, next) => {
   const session = getSession()
   try {
+    // Usamos description como campo de filtro masivo para Productos segun config
     const result = await session.run(
-      `MATCH (p:Product {category: $category}) DETACH DELETE p RETURN count(p) AS deleted`,
+      `MATCH (p:Product {description: $category}) DETACH DELETE p RETURN count(p) AS deleted`,
       { category: req.params.category }
     )
     res.json({ deleted: result.records[0].get('deleted').toNumber() })

@@ -1,98 +1,64 @@
 import React, { useEffect, useState } from 'react';
-import { getStats } from '../services/api';
-import { Truck, Package, Factory, MapPin } from 'lucide-react';
+import { Truck, Factory, Package, MapPin, Store, Cpu } from 'lucide-react';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({
-    suppliers: 0,
-    manufacturers: 0,
-    products: 0,
-    centers: 0,
-    loading: true
-  });
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getStats()
-      .then(data => {
-        setStats({ 
-          suppliers: data.Supplier || 0,
-          manufacturers: data.Manufacturer || 0,
-          products: data.Product || 0,
-          centers: data.DistributionCenter || 0,
-          loading: false 
-        });
-      })
-      .catch(() => setStats({ suppliers: 0, manufacturers: 0, products: 0, centers: 0, loading: false }));
+    fetch('http://localhost:3000/api/stats/counts')
+      .then(r => r.json())
+      .then(d => { setStats(d); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
+  const cards = [
+    { label: 'Suppliers',     key: 'Supplier',           icon: Truck,   color: '#38bdf8' },
+    { label: 'Manufacturers', key: 'Manufacturer',        icon: Factory, color: '#a78bfa' },
+    { label: 'Products',      key: 'Product',             icon: Package, color: '#34d399' },
+    { label: 'Dist. Centers', key: 'DistributionCenter',  icon: MapPin,  color: '#fb923c' },
+    { label: 'Retailers',     key: 'Retailer',            icon: Store,   color: '#f472b6' },
+    { label: 'Components',    key: 'Component',           icon: Cpu,     color: '#facc15' },
+  ];
+
   return (
-    <div className="dashboard">
-      <div className="page-header">
+    <div>
+      <div className="page-header" style={{ marginTop: '1.5rem' }}>
         <div>
-          <h1>Resumen de Cadena de Suministros</h1>
-          <p className="text-muted" style={{ color: 'var(--text-muted)' }}>Bienvenido al Dashboard del Grafo Global Neo4j.</p>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Resumen de la cadena de suministros en Neo4j</p>
         </div>
       </div>
 
-      <div className="dashboard-grid">
-        <div className="stat-card glass-panel">
-          <Truck size={32} color="var(--primary-color)" />
-          <div className="stat-value">{stats.loading ? '...' : stats.suppliers}</div>
-          <div className="stat-label">Proveedores Totales</div>
-        </div>
-        <div className="stat-card glass-panel">
-          <Factory size={32} color="var(--secondary-color)" />
-          <div className="stat-value">{stats.loading ? '...' : stats.manufacturers}</div>
-          <div className="stat-label">Fabricantes</div>
-        </div>
-        <div className="stat-card glass-panel">
-          <Package size={32} color="#10b981" />
-          <div className="stat-value">{stats.loading ? '...' : stats.products}</div>
-          <div className="stat-label">Productos</div>
-        </div>
-        <div className="stat-card glass-panel">
-          <MapPin size={32} color="#f59e0b" />
-          <div className="stat-value">{stats.loading ? '...' : stats.centers}</div>
-          <div className="stat-label">Centros de Distribución</div>
+      <div className="stat-grid">
+        {cards.map(({ label, key, icon: Icon, color }) => (
+          <div className="stat-card" key={key}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div className="stat-label">{label}</div>
+                <div className="stat-value">{loading ? '—' : (stats?.[key] ?? 0).toLocaleString()}</div>
+              </div>
+              <Icon size={20} color={color} style={{ opacity: 0.8, marginTop: 4 }}/>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="section" style={{ marginTop: '1rem' }}>
+        <div className="section-title">Tipos de relaciones en el grafo</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {['SUPPLIES','REQUIRES','MANUFACTURES','SHIPS_TO','SOURCES_FROM','RECEIVES_FROM','SELLS','REJECTS','PROMOTES','AUDITS'].map(r => (
+            <span key={r} className="badge badge-blue">{r}</span>
+          ))}
         </div>
       </div>
 
-      <div className="glass-panel" style={{ marginTop: '2rem', padding: '2rem' }}>
-        <h2>Actividad Reciente en la Red</h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-          Métricas en tiempo real desde la instancia de AuraDB.
-        </p>
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Evento</th>
-                <th>Tipo</th>
-                <th>Estado</th>
-                <th>Tiempo</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Sincronización de Datos</td>
-                <td><span className="badge badge-success">Ingestión</span></td>
-                <td>Completado</td>
-                <td>Justo ahora</td>
-              </tr>
-              <tr>
-                <td>Análisis de Ruta Más Corta</td>
-                <td><span className="badge badge-warning">Consulta</span></td>
-                <td>Ejecutando</td>
-                <td>Hace 2 mins</td>
-              </tr>
-              <tr>
-                <td>Actualización de Retailer</td>
-                <td><span className="badge badge-success">Mutación</span></td>
-                <td>Completado</td>
-                <td>Hace 15 mins</td>
-              </tr>
-            </tbody>
-          </table>
+      <div className="section">
+        <div className="section-title">Labels de nodos</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {['Supplier','Component','Manufacturer','Product','DistributionCenter','Retailer','PreferredSupplier'].map(l => (
+            <span key={l} className="badge badge-green">{l}</span>
+          ))}
         </div>
       </div>
     </div>

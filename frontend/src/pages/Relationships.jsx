@@ -1,556 +1,376 @@
 import React, { useState } from 'react';
-import { Share2, Plus, Edit3, Trash2, Link as LinkIcon, Unlink } from 'lucide-react';
+import { Share2, Plus, Edit3, Trash2, Link as LinkIcon, Unlink, Eye } from 'lucide-react';
+
+const API = 'http://localhost:3000/api/relationships';
+
+// ─── Config de los 10 tipos de relaciones ──────────────────────────────────
+const REL_TYPES = [
+  {
+    key: 'supplies', label: 'SUMINISTRA', color: '#6366f1',
+    desc: 'Proveedor → Componente',
+    fields: [
+      { key: 'supplierId', label: 'ID Proveedor', placeholder: 'SUP1' },
+      { key: 'componentId', label: 'ID Componente', placeholder: 'CMP1' },
+      { key: 'unitPrice', label: 'Precio Unitario', type: 'number' },
+      { key: 'leadTimeDays', label: 'Días de Entrega', type: 'number' },
+      { key: 'contractEnd', label: 'Fin Contrato', type: 'date' },
+    ],
+  },
+  {
+    key: 'ships-to', label: 'ENVÍA_A', color: '#10b981',
+    desc: 'Centro Dist. → Minorista',
+    fields: [
+      { key: 'centerId', label: 'ID Centro', placeholder: 'DC1' },
+      { key: 'retailerId', label: 'ID Minorista', placeholder: 'RET1' },
+      { key: 'avgDeliveryDays', label: 'Días Entrega Promedio', type: 'number' },
+      { key: 'shippingCost', label: 'Costo de Envío', type: 'number' },
+      { key: 'route', label: 'Ruta', type: 'select', options: ['Terrestre', 'Aérea', 'Marítima'] },
+    ],
+  },
+  {
+    key: 'requires', label: 'REQUIERE', color: '#f59e0b',
+    desc: 'Producto → Componente',
+    fields: [
+      { key: 'productId', label: 'ID Producto', placeholder: 'PROD1' },
+      { key: 'componentId', label: 'ID Componente', placeholder: 'CMP1' },
+      { key: 'quantity', label: 'Cantidad', type: 'number' },
+      { key: 'isCritical', label: 'Es Crítico', type: 'select', options: ['sí', 'no'] },
+      { key: 'specification', label: 'Especificación', placeholder: 'Estándar' },
+    ],
+  },
+  {
+    key: 'manufactures', label: 'FABRICA', color: '#ec4899',
+    desc: 'Fabricante → Producto',
+    fields: [
+      { key: 'manufacturerId', label: 'ID Fabricante', placeholder: 'MAN1' },
+      { key: 'productId', label: 'ID Producto', placeholder: 'PROD1' },
+      { key: 'unitsPerDay', label: 'Unidades/Día', type: 'number' },
+      { key: 'startDate', label: 'Fecha Inicio', type: 'date' },
+      { key: 'qualityScore', label: 'Score Calidad', type: 'number' },
+    ],
+  },
+  {
+    key: 'sources-from', label: 'SE_ORIGINA_EN', color: '#8b5cf6',
+    desc: 'Fabricante → Proveedor',
+    fields: [
+      { key: 'manufacturerId', label: 'ID Fabricante', placeholder: 'MAN1' },
+      { key: 'supplierId', label: 'ID Proveedor', placeholder: 'SUP1' },
+      { key: 'annualVolume', label: 'Volumen Anual', type: 'number' },
+      { key: 'since', label: 'Desde', type: 'date' },
+      { key: 'preferredSupplier', label: 'Proveedor Preferido', type: 'select', options: ['sí', 'no'] },
+    ],
+  },
+  {
+    key: 'receives-from', label: 'RECIBE_DE', color: '#06b6d4',
+    desc: 'Centro Dist. → Fabricante',
+    fields: [
+      { key: 'centerId', label: 'ID Centro', placeholder: 'DC1' },
+      { key: 'manufacturerId', label: 'ID Fabricante', placeholder: 'MAN1' },
+      { key: 'frequency', label: 'Frecuencia', type: 'select', options: ['Diario', 'Semanal', 'Mensual'] },
+      { key: 'lastDelivery', label: 'Última Entrega', type: 'date' },
+      { key: 'batchSize', label: 'Tamaño Lote', type: 'number' },
+    ],
+  },
+  {
+    key: 'sells', label: 'VENDE', color: '#f97316',
+    desc: 'Minorista → Producto',
+    fields: [
+      { key: 'retailerId', label: 'ID Minorista', placeholder: 'RET1' },
+      { key: 'productId', label: 'ID Producto', placeholder: 'PROD1' },
+      { key: 'sellingPrice', label: 'Precio Venta', type: 'number' },
+      { key: 'monthlySales', label: 'Ventas Mensuales', type: 'number' },
+      { key: 'isExclusive', label: 'Es Exclusivo', type: 'select', options: ['sí', 'no'] },
+    ],
+  },
+  {
+    key: 'rejects', label: 'RECHAZA', color: '#ef4444',
+    desc: 'Fabricante → Componente',
+    fields: [
+      { key: 'manufacturerId', label: 'ID Fabricante', placeholder: 'MAN1' },
+      { key: 'componentId', label: 'ID Componente', placeholder: 'CMP1' },
+      { key: 'reason', label: 'Razón', placeholder: 'Defecto' },
+      { key: 'rejectDate', label: 'Fecha Rechazo', type: 'date' },
+      { key: 'batchNumber', label: 'Número Lote', placeholder: 'LOTE-001' },
+    ],
+  },
+  {
+    key: 'promotes', label: 'PROMUEVE', color: '#84cc16',
+    desc: 'Minorista → Producto',
+    fields: [
+      { key: 'retailerId', label: 'ID Minorista', placeholder: 'RET1' },
+      { key: 'productId', label: 'ID Producto', placeholder: 'PROD1' },
+      { key: 'campaignName', label: 'Nombre Campaña', placeholder: 'Oferta Verano' },
+      { key: 'budget', label: 'Presupuesto', type: 'number' },
+      { key: 'startDate', label: 'Fecha Inicio', type: 'date' },
+    ],
+  },
+  {
+    key: 'audits', label: 'AUDITA', color: '#a855f7',
+    desc: 'Centro Dist. → Proveedor',
+    fields: [
+      { key: 'centerId', label: 'ID Centro', placeholder: 'DC1' },
+      { key: 'supplierId', label: 'ID Proveedor', placeholder: 'SUP1' },
+      { key: 'auditorName', label: 'Nombre Auditor', placeholder: 'Juan Pérez' },
+      { key: 'auditDate', label: 'Fecha Auditoría', type: 'date' },
+      { key: 'passed', label: 'Pasó Auditoría', type: 'select', options: ['sí', 'no'] },
+    ],
+  },
+];
+
+const emptyForm = (fields) => Object.fromEntries(fields.map(f => [f.key, '']));
+
+const FieldInput = ({ field, value, onChange }) => {
+  if (field.type === 'select') return (
+    <select className="form-input form-select" value={value} onChange={e => onChange(e.target.value)}>
+      <option value="">-- Seleccionar --</option>
+      {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+  return <input type={field.type || 'text'} step={field.type === 'number' ? 'any' : undefined} className="form-input" value={value || ''} placeholder={field.placeholder || ''} onChange={e => onChange(e.target.value)} required/>;
+};
 
 const Relationships = () => {
-  // SHIPS_TO (Bulk / Create)
-  const [newRel, setNewRel] = useState({ centerId: '', retailerId: '', avgDeliveryDays: '', shippingCost: '', route: 'Ground' });
-  const [newSupplies, setNewSupplies] = useState({ supplierId: '', componentId: '', unitPrice: '', leadTimeDays: '', contractEnd: '' });
-  const [bulkUpdate, setBulkUpdate] = useState({ route: 'Ground', shippingCost: '' });
-  const [bulkDeleteRoute, setBulkDeleteRoute] = useState('Ground');
-  
-  // SUPPLIES (Single CRUD)
-  const [singleRel, setSingleRel] = useState({ supplierId: '', componentId: '', unitPrice: '' });
-  const [singleDelete, setSingleDelete] = useState({ supplierId: '', componentId: '' });
-
-  // SHIPS_TO (Single CRUD)
-  const [singleShipsRel, setSingleShipsRel] = useState({ centerId: '', retailerId: '', shippingCost: '' });
-  const [singleShipsDelete, setSingleShipsDelete] = useState({ centerId: '', retailerId: '' });
-
+  const [activeTab, setActiveTab] = useState('supplies');
   const [relationships, setRelationships] = useState([]);
   const [loading, setLoading] = useState(false);
-
+  const [createForm, setCreateForm] = useState({});
+  const [updateForm, setUpdateForm] = useState({});
+  const [deleteIds, setDeleteIds] = useState({});
+  const [bulkRoute, setBulkRoute] = useState('Ground');
   const [message, setMessage] = useState('');
+
+  const cfg = REL_TYPES.find(r => r.key === activeTab);
+
+  const showMsg = (m) => { setMessage(m); setTimeout(() => setMessage(''), 5000); };
+
+  React.useEffect(() => {
+    setCreateForm(emptyForm(cfg.fields));
+    setUpdateForm({});
+    setDeleteIds({});
+    fetchRelationships();
+  }, [activeTab]);
 
   const fetchRelationships = async () => {
     setLoading(true);
     try {
-      const [res1, res2] = await Promise.all([
-        fetch('http://localhost:3000/api/relationships/ships-to'),
-        fetch('http://localhost:3000/api/relationships/supplies')
-      ]);
-      const data1 = await res1.json();
-      const data2 = await res2.json();
-      setRelationships([...data1, ...data2]);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      const res = await fetch(`${API}/${activeTab}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRelationships(Array.isArray(data) ? data : []);
+      } else {
+        setRelationships([]);
+      }
+    } catch { 
+      setRelationships([]);
+    } finally { 
+      setLoading(false); 
     }
-  };
-
-  React.useEffect(() => {
-    fetchRelationships();
-  }, []);
-
-  const showMessage = (msg) => {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), 5000);
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    try {
-      const response = await fetch('http://localhost:3000/api/relationships/ships-to', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          centerId: newRel.centerId,
-          retailerId: newRel.retailerId,
-          avgDeliveryDays: parseInt(newRel.avgDeliveryDays),
-          shippingCost: parseFloat(newRel.shippingCost),
-          route: newRel.route
-        })
-      });
-      if (response.ok) {
-        showMessage('Relación SHIPS_TO creada exitosamente.');
-        setNewRel({ centerId: '', retailerId: '', avgDeliveryDays: '', shippingCost: '', route: 'Ground' });
-        fetchRelationships();
-      } else {
-        showMessage('Error al crear la relación. Verifica que los IDs existan.');
-      }
-    } catch (err) {
-      console.error(err);
+    const body = { ...createForm };
+    cfg.fields.forEach(f => {
+      if (f.type === 'number') body[f.key] = parseFloat(body[f.key]) || 0;
+      if (f.type === 'select' && (body[f.key] === 'true' || body[f.key] === 'false')) body[f.key] = body[f.key] === 'true';
+    });
+    const res = await fetch(`${API}/${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (res.ok) { showMsg(`✅ Relación ${cfg.label} creada exitosamente`); setCreateForm(emptyForm(cfg.fields)); fetchRelationships(); }
+    else showMsg('❌ Error: verifica que los IDs existan en la BD');
+  };
+
+  const handleIndividualUpdate = async (e) => {
+    e.preventDefault();
+    const { id1, id2, ...props } = updateForm;
+    if (!id1 || !id2) return showMsg('❌ Ingresa ambos IDs');
+    
+    // Convert numerical values
+    const processedProps = {};
+    Object.entries(props).forEach(([k, v]) => {
+      const field = cfg.fields.find(f => f.key === k);
+      if (field && field.type === 'number') processedProps[k] = parseFloat(v) || 0;
+      else processedProps[k] = v;
+    });
+
+    const res = await fetch(`${API}/${cfg.key}/${id1}/${id2}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(processedProps)
+    });
+
+    if (res.ok) {
+      showMsg(`✅ Relación ${cfg.label} actualizada`);
+      fetchRelationships();
+    } else {
+      showMsg('❌ No se encontró la relación o error en el servidor');
+    }
+  };
+
+  const handleDeleteSingle = async () => {
+    const { id1, id2 } = deleteIds;
+    if (!id1 || !id2) return showMsg('❌ Ingresa ambos IDs');
+    if (!window.confirm('¿Eliminar esta relación de forma permanente?')) return;
+    
+    const res = await fetch(`${API}/${cfg.key}/${id1}/${id2}`, { method: 'DELETE' });
+    if (res.ok) {
+      showMsg('✅ Relación eliminada exitosamente');
+      fetchRelationships();
+    } else {
+      showMsg('❌ No se encontró la relación');
     }
   };
 
   const handleBulkUpdate = async (e) => {
     e.preventDefault();
-    try {
-      const response = await fetch('http://localhost:3000/api/relationships/ships-to/bulk/by-route', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          route: bulkUpdate.route,
-          shippingCost: parseFloat(bulkUpdate.shippingCost)
-        })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        showMessage(`Se actualizaron ${data.updated} relaciones exitosamente.`);
-        setBulkUpdate({ ...bulkUpdate, shippingCost: '' });
-        fetchRelationships();
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await fetch(`${API}/ships-to/bulk/by-route`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route: bulkRoute, shippingCost: 99.99 }) });
+    if (res.ok) { const d = await res.json(); showMsg(`✅ Se actualizaron ${d.updated} relaciones SHIPS_TO`); fetchRelationships(); }
   };
 
-  const handleBulkDeleteProperty = async (e) => {
-    e.preventDefault();
-    if(window.confirm(`¿Estás seguro de ELIMINAR la propiedad 'shippingCost' de TODAS las relaciones SHIPS_TO con la ruta ${bulkDeleteRoute}?`)) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/relationships/ships-to/bulk/properties`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ route: bulkDeleteRoute, fields: ['shippingCost'] })
-        });
-        if (response.ok) {
-          showMessage(`Propiedad eliminada masivamente exitosamente.`);
-          fetchRelationships();
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`¿Eliminar TODAS las relaciones SHIPS_TO con ruta ${bulkRoute}?`)) return;
+    const res = await fetch(`${API}/ships-to/bulk/by-route/${encodeURIComponent(bulkRoute)}`, { method: 'DELETE' });
+    if (res.ok) { const d = await res.json(); showMsg(`✅ Se eliminaron ${d.deleted} relaciones`); fetchRelationships(); }
   };
 
-  const handleBulkDelete = async (e) => {
-    e.preventDefault();
-    if(window.confirm(`¿Estás seguro de eliminar TODAS las relaciones SHIPS_TO con la ruta ${bulkDeleteRoute}?`)) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/relationships/ships-to/bulk/by-route/${encodeURIComponent(bulkDeleteRoute)}`, {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          const data = await response.json();
-          showMessage(`Se eliminaron ${data.deleted} relaciones exitosamente.`);
-          fetchRelationships();
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
+  const handleBulkDeleteProp = async () => {
+    if (!window.confirm(`¿Eliminar la propiedad shippingCost de TODAS las SHIPS_TO con ruta ${bulkRoute}?`)) return;
+    const res = await fetch(`${API}/ships-to/bulk/properties`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route: bulkRoute, fields: ['shippingCost'] }) });
+    if (res.ok) { showMsg('✅ Propiedades eliminadas masivamente'); fetchRelationships(); }
   };
 
-  const handleSingleUpdate = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await fetch(`http://localhost:3000/api/relationships/supplies/${singleRel.supplierId}/${singleRel.componentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unitPrice: parseFloat(singleRel.unitPrice) })
-      });
-      if (response.ok) {
-        showMessage('Relación SUPPLIES actualizada exitosamente.');
-        setSingleRel({ supplierId: '', componentId: '', unitPrice: '' });
-        fetchRelationships();
-      } else {
-        showMessage('Error: No se encontró la relación.');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleSingleDeleteProperty = async (e) => {
-    e.preventDefault();
-    if(window.confirm('¿Estás seguro de ELIMINAR la propiedad unitPrice de esta relación específica?')) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/relationships/supplies/${singleRel.supplierId}/${singleRel.componentId}/properties`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields: ['unitPrice'] })
-        });
-        if (response.ok) {
-          showMessage('Propiedad unitPrice eliminada exitosamente.');
-          fetchRelationships();
-        } else {
-          showMessage('Error: No se encontró la relación.');
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
-
-  const handleSingleDelete = async (e) => {
-    e.preventDefault();
-    if(window.confirm('¿Estás seguro de eliminar esta relación específica?')) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/relationships/supplies/${singleDelete.supplierId}/${singleDelete.componentId}`, {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          showMessage('Relación SUPPLIES eliminada exitosamente.');
-          setSingleDelete({ supplierId: '', componentId: '' });
-          fetchRelationships();
-        } else {
-          showMessage('Error: No se encontró la relación.');
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
-
-  const handleSingleShipsUpdate = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await fetch(`http://localhost:3000/api/relationships/ships-to/${singleShipsRel.centerId}/${singleShipsRel.retailerId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shippingCost: parseFloat(singleShipsRel.shippingCost) })
-      });
-      if (response.ok) {
-        showMessage('Relación SHIPS_TO actualizada exitosamente.');
-        setSingleShipsRel({ centerId: '', retailerId: '', shippingCost: '' });
-        fetchRelationships();
-      } else {
-        showMessage('Error: No se encontró la relación.');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleSingleShipsDeleteProperty = async (e) => {
-    e.preventDefault();
-    if(window.confirm('¿Estás seguro de ELIMINAR la propiedad shippingCost de esta relación específica?')) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/relationships/ships-to/${singleShipsRel.centerId}/${singleShipsRel.retailerId}/properties`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields: ['shippingCost'] })
-        });
-        if (response.ok) {
-          showMessage('Propiedad shippingCost eliminada exitosamente.');
-          fetchRelationships();
-        } else {
-          showMessage('Error: No se encontró la relación.');
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
-
-  const handleSingleShipsDelete = async (e) => {
-    e.preventDefault();
-    if(window.confirm('¿Estás seguro de eliminar esta relación SHIPS_TO específica?')) {
-      try {
-        const response = await fetch(`http://localhost:3000/api/relationships/ships-to/${singleShipsDelete.centerId}/${singleShipsDelete.retailerId}`, {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          showMessage('Relación SHIPS_TO eliminada exitosamente.');
-          setSingleShipsDelete({ centerId: '', retailerId: '' });
-          fetchRelationships();
-        } else {
-          showMessage('Error: No se encontró la relación.');
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
+  const formatPropVal = (v) => {
+    if (v === null || v === undefined) return <em style={{ color: 'var(--text-muted)' }}>null</em>;
+    if (typeof v === 'object' && v.year) return `${v.year.low || v.year}-${v.month.low || v.month}-${v.day.low || v.day}`;
+    if (typeof v === 'object' && v.low !== undefined) return v.low;
+    return String(v);
   };
 
   return (
-    <div className="relationships-page">
+    <div style={{ marginTop: '1.5rem' }}>
       <div className="page-header">
         <div>
-          <h1>Gestión de Relaciones</h1>
-          <p className="text-muted" style={{ color: 'var(--text-muted)' }}>Administra las conexiones del grafo entre nodos (SHIPS_TO y SUPPLIES).</p>
+          <h1 className="page-title">Relaciones</h1>
+          <p className="page-subtitle">Gestión de conexiones entre entidades del grafo</p>
         </div>
       </div>
 
       {message && (
-        <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderRadius: '8px' }}>
-          {message}
-        </div>
+        <div className={`alert ${message.startsWith('✅') ? 'alert-success' : 'alert-error'}`}>{message}</div>
       )}
 
-      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
-        <h3><LinkIcon size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--primary-color)' }}/> Relaciones Existentes (Visualización)</h3>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-          Se muestran las relaciones SHIPS_TO y SUPPLIES para validar visualmente las propiedades.
-        </p>
-        
-        {loading ? (
-          <div className="loader"></div>
-        ) : (
-          <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            <table style={{ margin: 0 }}>
-              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-dark)', zIndex: 1 }}>
-                <tr>
-                  <th>Origen (Source)</th>
-                  <th>Tipo de Relación</th>
-                  <th>Destino (Target)</th>
-                  <th>Propiedades</th>
-                </tr>
-              </thead>
+      {/* Tabla de relaciones existentes */}
+      <div className="section" style={{ marginBottom: '1.5rem' }}>
+        <div className="section-title">Vista Previa de Conexiones (Muestra)</div>
+        {loading ? <div className="loader"/> : (
+          <div className="table-wrap" style={{ maxHeight: '260px', overflowY: 'auto' }}>
+            <table>
+              <thead><tr><th>Origen</th><th>Tipo</th><th>Destino</th><th>Propiedades</th></tr></thead>
               <tbody>
-                {relationships.length === 0 ? (
-                  <tr><td colSpan="4" style={{ textAlign: 'center' }}>No hay relaciones de estos tipos aún.</td></tr>
-                ) : relationships.map((rel, idx) => (
-                  <tr key={idx}>
-                    <td><strong>{rel.source}</strong></td>
-                    <td><span className="badge badge-success">{rel.type}</span></td>
-                    <td><strong>{rel.target}</strong></td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {Object.entries(rel.props).map(([k, v]) => (
-                          <span key={k} style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem' }}>
-                            {k}: <strong>{v === null ? 'null' : (typeof v === 'object' ? (v.year ? `${v.year.low || v.year}-${v.month.low || v.month}-${v.day.low || v.day}` : (v.low !== undefined ? v.low : JSON.stringify(v))) : String(v))}</strong>
-                          </span>
-                        ))}
-                        {Object.keys(rel.props).length === 0 && <span style={{ color: 'var(--text-muted)' }}>Ninguna (Propiedades eliminadas)</span>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {relationships.length === 0
+                  ? <tr><td colSpan="4" className="empty">No hay relaciones registradas en esta vista</td></tr>
+                  : relationships.map((rel, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 600 }}>{rel.source}</td>
+                      <td><span className="badge badge-blue">{rel.type}</span></td>
+                      <td>{rel.target}</td>
+                      <td style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                        {Object.entries(rel.props || {}).map(([k, v]) => `${k}: ${formatPropVal(v)}`).join(' · ')}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      <div className="dashboard-grid">
-        {/* CREATE SHIPS_TO */}
-        <div className="glass-panel" style={{ padding: '2rem' }}>
-          <h3><Plus size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--primary-color)' }}/> Crear Relación (Múltiples Propiedades)</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-            DistributionCenter -[SHIPS_TO]-&gt; Retailer
-          </p>
+      {/* Tabs */}
+      <div className="tabs">
+        {REL_TYPES.map(r => (
+          <button key={r.key} className={`tab${activeTab === r.key ? ' active' : ''}`}
+            onClick={() => setActiveTab(r.key)}
+            style={activeTab === r.key ? { color: r.color, borderBottomColor: r.color } : {}}>
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid-3">
+        {/* CREATE */}
+        <div className="section">
+          <div className="section-title">Crear {cfg.label}</div>
+          <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '1rem' }}>{cfg.desc}</p>
           <form onSubmit={handleCreate}>
-            <div className="form-group">
-              <label className="form-label">Center ID</label>
-              <input required type="text" className="form-control" placeholder="Ej. DC12" value={newRel.centerId} onChange={e => setNewRel({...newRel, centerId: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Retailer ID</label>
-              <input required type="text" className="form-control" placeholder="Ej. RET85" value={newRel.retailerId} onChange={e => setNewRel({...newRel, retailerId: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Días de Entrega Promedio</label>
-              <input required type="number" className="form-control" value={newRel.avgDeliveryDays} onChange={e => setNewRel({...newRel, avgDeliveryDays: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Costo de Envío</label>
-              <input required type="number" step="0.01" className="form-control" value={newRel.shippingCost} onChange={e => setNewRel({...newRel, shippingCost: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Ruta</label>
-              <select className="form-control" value={newRel.route} onChange={e => setNewRel({...newRel, route: e.target.value})}>
-                <option value="Ground">Tierra (Ground)</option>
-                <option value="Air">Aire (Air)</option>
-                <option value="Sea">Mar (Sea)</option>
-              </select>
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Crear Relación</button>
+            {cfg.fields.map(f => (
+              <div className="form-group" key={f.key}>
+                <label className="form-label">{f.label}</label>
+                <FieldInput field={f} value={createForm[f.key]} onChange={v => setCreateForm(p => ({ ...p, [f.key]: v }))}/>
+              </div>
+            ))}
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.25rem' }}>Crear Relación</button>
           </form>
         </div>
 
-        {/* CREATE SUPPLIES */}
-        <div className="glass-panel" style={{ padding: '2rem' }}>
-          <h3><Plus size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--secondary-color)' }}/> Crear Relación SUPPLIES</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-            Supplier -[SUPPLIES]-&gt; Component
-          </p>
-          <form onSubmit={async (e) => {
-            e.preventDefault();
-            try {
-              const response = await fetch('http://localhost:3000/api/relationships/supplies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  supplierId: newSupplies.supplierId,
-                  componentId: newSupplies.componentId,
-                  unitPrice: parseFloat(newSupplies.unitPrice),
-                  leadTimeDays: parseInt(newSupplies.leadTimeDays),
-                  contractEnd: newSupplies.contractEnd
-                })
-              });
-              if (response.ok) {
-                showMessage('Relación SUPPLIES creada exitosamente.');
-                setNewSupplies({ supplierId: '', componentId: '', unitPrice: '', leadTimeDays: '', contractEnd: '' });
-                fetchRelationships();
-              } else {
-                showMessage('Error al crear la relación. Verifica que los IDs existan.');
-              }
-            } catch (err) { console.error(err); }
-          }}>
+        {/* UPDATE individual */}
+        <div className="section">
+          <div className="section-title">Actualizar Individual</div>
+          <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '1rem' }}>Modifica una relación específica entre dos nodos.</p>
+          <form onSubmit={handleIndividualUpdate}>
             <div className="form-group">
-              <label className="form-label">Supplier ID</label>
-              <input required type="text" className="form-control" placeholder="Ej. SUP10" value={newSupplies.supplierId} onChange={e => setNewSupplies({...newSupplies, supplierId: e.target.value})} />
+              <label className="form-label">ID Origen</label>
+              <input className="form-input" value={updateForm.id1 || ''} onChange={e => setUpdateForm(p => ({ ...p, id1: e.target.value }))} placeholder="ID del primer nodo" required/>
             </div>
             <div className="form-group">
-              <label className="form-label">Component ID</label>
-              <input required type="text" className="form-control" placeholder="Ej. CMP45" value={newSupplies.componentId} onChange={e => setNewSupplies({...newSupplies, componentId: e.target.value})} />
+              <label className="form-label">ID Destino</label>
+              <input className="form-input" value={updateForm.id2 || ''} onChange={e => setUpdateForm(p => ({ ...p, id2: e.target.value }))} placeholder="ID del segundo nodo" required/>
             </div>
-            <div className="form-group">
-              <label className="form-label">Precio Unitario (unitPrice)</label>
-              <input required type="number" step="0.01" className="form-control" value={newSupplies.unitPrice} onChange={e => setNewSupplies({...newSupplies, unitPrice: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Días de Entrega (leadTimeDays)</label>
-              <input required type="number" className="form-control" value={newSupplies.leadTimeDays} onChange={e => setNewSupplies({...newSupplies, leadTimeDays: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Fecha Fin Contrato (contractEnd)</label>
-              <input required type="date" className="form-control" value={newSupplies.contractEnd} onChange={e => setNewSupplies({...newSupplies, contractEnd: e.target.value})} />
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem', background: 'var(--secondary-color)', border: 'none' }}>Crear Relación SUPPLIES</button>
+            {cfg.fields.slice(2).map(f => (
+              <div className="form-group" key={f.key}>
+                <label className="form-label">{f.label} (Nuevo)</label>
+                <FieldInput field={f} value={updateForm[f.key]} onChange={v => setUpdateForm(p => ({ ...p, [f.key]: v }))}/>
+              </div>
+            ))}
+            <button type="submit" className="btn btn-warning" style={{ width: '100%', marginTop: '0.25rem' }}>Actualizar Propiedades</button>
           </form>
         </div>
 
-        {/* BULK ACTIONS SHIPS_TO */}
+        {/* DELETE + BULK */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Edit3 size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: '#f59e0b' }}/> Actualización Masiva</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Actualiza el costo de envío para todas las relaciones basadas en la Ruta.
-            </p>
-            <form onSubmit={handleBulkUpdate}>
+          <div className="section">
+            <div className="section-title">Eliminar Relación</div>
+            <div className="form-group">
+              <label className="form-label">ID Origen</label>
+              <input className="form-input" value={deleteIds.id1 || ''} onChange={e => setDeleteIds(p => ({ ...p, id1: e.target.value }))} placeholder="ID origen"/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">ID Destino</label>
+              <input className="form-input" value={deleteIds.id2 || ''} onChange={e => setDeleteIds(p => ({ ...p, id2: e.target.value }))} placeholder="ID destino"/>
+            </div>
+            <button className="btn btn-danger" style={{ width: '100%' }} onClick={handleDeleteSingle}>Eliminar Definitivamente</button>
+          </div>
+
+          {activeTab === 'ships-to' && (
+            <div className="section">
+              <div className="section-title">Operaciones Masivas</div>
               <div className="form-group">
-                <label className="form-label">Ruta Objetivo</label>
-                <select className="form-control" value={bulkUpdate.route} onChange={e => setBulkUpdate({...bulkUpdate, route: e.target.value})}>
-                  <option value="Ground">Tierra (Ground)</option>
-                  <option value="Air">Aire (Air)</option>
-                  <option value="Sea">Mar (Sea)</option>
+                <label className="form-label">Filtrar por Ruta</label>
+                <select className="form-input form-select" value={bulkRoute} onChange={e => setBulkRoute(e.target.value)}>
+                  <option value="Ground">Terrestre (Ground)</option>
+                  <option value="Air">Aérea (Air)</option>
+                  <option value="Sea">Marítima (Sea)</option>
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">Nuevo Costo de Envío</label>
-                <input required type="number" step="0.01" className="form-control" value={bulkUpdate.shippingCost} onChange={e => setBulkUpdate({...bulkUpdate, shippingCost: e.target.value})} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <button className="btn btn-warning btn-sm" onClick={handleBulkUpdate}>Actualizar Costos ($99.99)</button>
+                <button className="btn btn-secondary btn-sm" style={{ color: '#ef4444' }} onClick={handleBulkDeleteProp}>Limpiar Propiedad Costo</button>
+                <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>Eliminar Todas ({bulkRoute})</button>
               </div>
-              <button type="submit" className="btn btn-outline" style={{ width: '100%', marginTop: '1rem', borderColor: '#f59e0b', color: '#f59e0b' }}>Actualizar Relaciones</button>
-            </form>
-          </div>
-
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Trash2 size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: '#ef4444' }}/> Eliminación Masiva</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Elimina TODAS las relaciones SHIPS_TO por su Ruta.
-            </p>
-            <form onSubmit={handleBulkDelete}>
-              <div className="form-group">
-                <label className="form-label">Ruta Objetivo</label>
-                <select className="form-control" value={bulkDeleteRoute} onChange={e => setBulkDeleteRoute(e.target.value)}>
-                  <option value="Ground">Tierra (Ground)</option>
-                  <option value="Air">Aire (Air)</option>
-                  <option value="Sea">Mar (Sea)</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button type="submit" className="btn btn-danger" style={{ flex: 1 }}>Eliminar Relaciones</button>
-                <button type="button" className="btn btn-outline" style={{ flex: 1, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleBulkDeleteProperty}>
-                  Eliminar Propiedad
-                </button>
-              </div>
-            </form>
-          </div>
+            </div>
+          )}
         </div>
-
-        {/* SINGLE CRUD SUPPLIES */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><LinkIcon size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--secondary-color)' }}/> Actualizar Relación Individual</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Supplier -[SUPPLIES]-&gt; Component
-            </p>
-            <form onSubmit={handleSingleUpdate}>
-              <div className="form-group">
-                <label className="form-label">Supplier ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. SUP1" value={singleRel.supplierId} onChange={e => setSingleRel({...singleRel, supplierId: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Component ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. COMP1" value={singleRel.componentId} onChange={e => setSingleRel({...singleRel, componentId: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Nuevo Precio Unitario (unitPrice)</label>
-                <input required type="number" step="0.01" className="form-control" value={singleRel.unitPrice} onChange={e => setSingleRel({...singleRel, unitPrice: e.target.value})} />
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button type="submit" className="btn btn-outline" style={{ flex: 1, borderColor: 'var(--secondary-color)', color: 'var(--secondary-color)' }}>Actualizar Propiedad</button>
-                <button type="button" className="btn btn-outline" style={{ flex: 1, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleSingleDeleteProperty}>
-                  Eliminar Propiedad
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Unlink size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: '#ef4444' }}/> Eliminar Relación Individual</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Elimina una relación SUPPLIES específica.
-            </p>
-            <form onSubmit={handleSingleDelete}>
-              <div className="form-group">
-                <label className="form-label">Supplier ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. SUP1" value={singleDelete.supplierId} onChange={e => setSingleDelete({...singleDelete, supplierId: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Component ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. COMP1" value={singleDelete.componentId} onChange={e => setSingleDelete({...singleDelete, componentId: e.target.value})} />
-              </div>
-              <button type="submit" className="btn btn-danger" style={{ width: '100%', marginTop: '1rem' }}>Eliminar Relación Única</button>
-            </form>
-          </div>
-        </div>
-
-        {/* SINGLE CRUD SHIPS_TO */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><LinkIcon size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--primary-color)' }}/> Actualizar Relación Individual (SHIPS_TO)</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              DistributionCenter -[SHIPS_TO]-&gt; Retailer
-            </p>
-            <form onSubmit={handleSingleShipsUpdate}>
-              <div className="form-group">
-                <label className="form-label">Center ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. DC1" value={singleShipsRel.centerId} onChange={e => setSingleShipsRel({...singleShipsRel, centerId: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Retailer ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. RET1" value={singleShipsRel.retailerId} onChange={e => setSingleShipsRel({...singleShipsRel, retailerId: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Nuevo Costo de Envío (shippingCost)</label>
-                <input required type="number" step="0.01" className="form-control" value={singleShipsRel.shippingCost} onChange={e => setSingleShipsRel({...singleShipsRel, shippingCost: e.target.value})} />
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button type="submit" className="btn btn-outline" style={{ flex: 1, borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}>Actualizar Propiedad</button>
-                <button type="button" className="btn btn-outline" style={{ flex: 1, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleSingleShipsDeleteProperty}>
-                  Eliminar Propiedad
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Unlink size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: '#ef4444' }}/> Eliminar Relación Individual (SHIPS_TO)</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Elimina una relación SHIPS_TO específica.
-            </p>
-            <form onSubmit={handleSingleShipsDelete}>
-              <div className="form-group">
-                <label className="form-label">Center ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. DC1" value={singleShipsDelete.centerId} onChange={e => setSingleShipsDelete({...singleShipsDelete, centerId: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Retailer ID</label>
-                <input required type="text" className="form-control" placeholder="Ej. RET1" value={singleShipsDelete.retailerId} onChange={e => setSingleShipsDelete({...singleShipsDelete, retailerId: e.target.value})} />
-              </div>
-              <button type="submit" className="btn btn-danger" style={{ width: '100%', marginTop: '1rem' }}>Eliminar Relación Única</button>
-            </form>
-          </div>
-        </div>
-
       </div>
     </div>
   );
 };
 
 export default Relationships;
-

@@ -35,18 +35,24 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { manufacturerId, name, country, productionCapacity, isoCertified, specializations, establishedDate } = req.body
+    const { manufacturerId, name, region, rating, isActive, foundedYear, complianceList } = req.body
     const result = await session.run(
       `CREATE (m:Manufacturer {
         manufacturerId: $manufacturerId,
         name: $name,
-        country: $country,
-        productionCapacity: $productionCapacity,
-        isoCertified: $isoCertified,
-        specializations: $specializations,
-        establishedDate: date($establishedDate)
+        region: $region,
+        rating: $rating,
+        isActive: $isActive,
+        foundedYear: $foundedYear,
+        complianceList: $complianceList
       }) RETURN m`,
-      { manufacturerId, name, country, productionCapacity, isoCertified, specializations, establishedDate }
+      { 
+        manufacturerId, name, region, 
+        rating: parseFloat(rating), 
+        isActive: isActive === true, 
+        foundedYear: parseInt(foundedYear), 
+        complianceList: Array.isArray(complianceList) ? complianceList : String(complianceList).split(';')
+      }
     )
     res.status(201).json(result.records[0].get('m').properties)
   } catch (err) { next(err) } finally { await session.close() }
@@ -69,11 +75,11 @@ router.patch('/:id/properties', async (req, res, next) => {
 router.patch('/bulk/by-country', async (req, res, next) => {
   const session = getSession()
   try {
-    const { country, ...props } = req.body
+    const { region, ...props } = req.body
     const setClause = Object.keys(props).map(k => `m.${k} = $${k}`).join(', ')
     const result = await session.run(
-      `MATCH (m:Manufacturer {country: $country}) SET ${setClause} RETURN count(m) AS updated`,
-      { country, ...props }
+      `MATCH (m:Manufacturer {region: $region}) SET ${setClause} RETURN count(m) AS updated`,
+      { region, ...props }
     )
     res.json({ updated: result.records[0].get('updated').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
@@ -96,11 +102,11 @@ router.delete('/:id/properties', async (req, res, next) => {
 router.delete('/bulk/properties', async (req, res, next) => {
   const session = getSession()
   try {
-    const { country, fields } = req.body
+    const { region, fields } = req.body
     const removeClause = fields.map(f => `m.${f}`).join(', ')
     await session.run(
-      `MATCH (m:Manufacturer {country: $country}) REMOVE ${removeClause}`,
-      { country }
+      `MATCH (m:Manufacturer {region: $region}) REMOVE ${removeClause}`,
+      { region }
     )
     res.json({ message: 'Properties removed' })
   } catch (err) { next(err) } finally { await session.close() }
@@ -120,9 +126,10 @@ router.delete('/:id', async (req, res, next) => {
 router.delete('/bulk/by-country/:country', async (req, res, next) => {
   const session = getSession()
   try {
+    // Usamos region como campo de filtro masivo segun config
     const result = await session.run(
-      `MATCH (m:Manufacturer {country: $country}) DETACH DELETE m RETURN count(m) AS deleted`,
-      { country: req.params.country }
+      `MATCH (m:Manufacturer {region: $region}) DETACH DELETE m RETURN count(m) AS deleted`,
+      { region: req.params.country }
     )
     res.json({ deleted: result.records[0].get('deleted').toNumber() })
   } catch (err) { next(err) } finally { await session.close() }
@@ -133,12 +140,11 @@ router.get('/stats/by-country', async (req, res, next) => {
   try {
     const result = await session.run(
       `MATCH (m:Manufacturer)
-       RETURN m.country AS country, sum(m.productionCapacity) AS totalCapacity, count(m) AS total
-       ORDER BY totalCapacity DESC`
+       RETURN m.region AS country, count(m) AS total
+       ORDER BY total DESC`
     )
     res.json(result.records.map(r => ({
       country: r.get('country'),
-      totalCapacity: r.get('totalCapacity').toNumber(),
       total: r.get('total').toNumber()
     })))
   } catch (err) { next(err) } finally { await session.close() }

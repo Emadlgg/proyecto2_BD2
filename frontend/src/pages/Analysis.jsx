@@ -31,102 +31,104 @@ const Analysis = () => {
   };
 
   return (
-    <div className="analysis-page">
+    <div style={{ marginTop: '1.5rem' }}>
       <div className="page-header">
         <div>
-          <h1>Análisis de la Cadena de Suministro</h1>
-          <p className="text-muted" style={{ color: 'var(--text-muted)' }}>Algoritmos Avanzados de Data Science en Grafos y Consultas.</p>
+          <h1 className="page-title">Análisis de la Cadena de Suministro</h1>
+          <p className="page-subtitle">Algoritmos Avanzados y Ciencia de Datos en Grafos</p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         {/* SHORTEST PATH */}
-        <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr 2fr' }}>
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Zap size={20} color="var(--primary-color)" style={{ verticalAlign: 'middle', marginRight: '0.5rem' }}/> Algoritmo de Ruta Más Corta</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Encuentra la ruta más eficiente desde un Proveedor (Supplier) hasta un Minorista (Retailer) a través de la red utilizando un equivalente al algoritmo de Dijkstra en Cypher.
+        <div className="grid-2" style={{ gridTemplateColumns: '1fr 2fr', gap: '1.5rem' }}>
+          <div className="section">
+            <div className="section-title">
+              <Zap size={18} color="#38bdf8" style={{ marginRight: '0.5rem' }}/> 
+              Ruta Más Corta
+            </div>
+            <p style={{ color: '#6b7280', marginBottom: '1.5rem', fontSize: '0.85rem', lineHeight: 1.5 }}>
+              Encuentra la ruta más eficiente desde un Proveedor hasta un Minorista utilizando el algoritmo de Dijkstra.
             </p>
 
             <div className="form-group">
-              <label className="form-label">Supplier ID</label>
+              <label className="form-label">ID Proveedor</label>
               <input 
                 type="text" 
-                className="form-control" 
+                className="form-input" 
                 value={supplierId} 
                 onChange={e => setSupplierId(e.target.value)}
-                placeholder="e.g. SUP1"
+                placeholder="Ej. SUP1"
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Retailer ID</label>
+              <label className="form-label">ID Minorista</label>
               <input 
                 type="text" 
-                className="form-control" 
+                className="form-input" 
                 value={retailerId} 
                 onChange={e => setRetailerId(e.target.value)}
-                placeholder="e.g. RET1"
+                placeholder="Ej. RET1"
               />
             </div>
 
             <button 
               className="btn btn-primary" 
-              style={{ width: '100%', marginTop: '1rem' }}
+              style={{ width: '100%', marginTop: '0.5rem' }}
               onClick={runAnalysis}
               disabled={loading}
             >
-              {loading ? 'Analizando...' : <><Play size={18} /> Ejecutar Algoritmo</>}
+              {loading ? 'Analizando...' : <><Play size={16} style={{ marginRight: 6 }}/> Ejecutar</>}
             </button>
 
             {error && (
-              <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', borderRadius: '8px', fontSize: '0.9rem' }}>
+              <div className="alert alert-error" style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
                 {error}
               </div>
             )}
           </div>
 
-          <div className="glass-panel" style={{ padding: '2rem', display: 'flex', flexDirection: 'column' }}>
-            <h3>Resultados del Camino</h3>
-            <div className="graph-container" style={{ alignItems: pathData ? 'flex-start' : 'center', overflowY: 'auto', padding: pathData ? '1rem' : '0' }}>
+          <div className="section" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="section-title">Visualización del Camino</div>
+            <div style={{ flex: 1, display: 'flex', alignItems: pathData ? 'flex-start' : 'center', justifyContent: 'center', overflowY: 'auto', minHeight: '300px' }}>
               {loading ? (
                 <div className="loader"></div>
               ) : pathData ? (
-                <div style={{ width: '100%', textAlign: 'center' }}>
-                  <h4 style={{ color: 'var(--secondary-color)', marginBottom: '2rem', marginTop: '1rem' }}>¡Ruta Encontrada!</h4>
+                <div style={{ width: '100%', textAlign: 'center', padding: '1rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     {pathData.nodes.map((node, i) => (
                       <React.Fragment key={i}>
                         <div style={{ 
-                          padding: '1rem', 
-                          background: 'rgba(30, 41, 59, 0.8)', 
-                          borderRadius: '12px', 
-                          border: '2px solid var(--primary-color)', 
-                          minWidth: '220px',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+                          padding: '0.75rem 1.25rem', 
+                          background: '#1e293b', 
+                          borderRadius: '8px', 
+                          border: '1px solid #38bdf8', 
+                          minWidth: '200px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
                         }}>
-                          <div style={{ fontWeight: '800', fontSize: '1.1rem', color: 'white' }}>{node.labels[0]}</div>
-                          <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                            ID: {node.props.supplierId || node.props.componentId || node.props.manufacturerId || node.props.productId || node.props.centerId || node.props.retailerId}
+                          <div style={{ fontWeight: '700', fontSize: '0.95rem', color: '#fff' }}>{node.labels[0]}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.2rem' }}>
+                            {node.props.supplierId || node.props.componentId || node.props.manufacturerId || node.props.productId || node.props.centerId || node.props.retailerId}
                           </div>
                         </div>
                         
                         {i < pathData.relationships.length && (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0.5rem 0' }}>
-                            <div style={{ width: '2px', height: '15px', background: 'var(--secondary-color)' }}></div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0.25rem 0' }}>
+                            <div style={{ width: '1px', height: '12px', background: '#10b981' }}></div>
                             <span style={{ 
-                              background: 'var(--bg-dark)', 
-                              color: 'var(--secondary-color)', 
-                              padding: '4px 12px', 
-                              borderRadius: '20px', 
-                              fontSize: '0.8rem',
-                              fontWeight: 'bold',
-                              border: '1px solid var(--secondary-color)',
-                              letterSpacing: '1px'
+                              background: 'transparent', 
+                              color: '#10b981', 
+                              padding: '2px 8px', 
+                              fontSize: '0.7rem',
+                              fontWeight: '600',
+                              border: '1px solid rgba(16,185,129,0.3)',
+                              borderRadius: '4px',
+                              textTransform: 'uppercase'
                             }}>
                               {pathData.relationships[i].type}
                             </span>
-                            <div style={{ width: '2px', height: '15px', background: 'var(--secondary-color)' }}></div>
+                            <div style={{ width: '1px', height: '12px', background: '#10b981' }}></div>
                           </div>
                         )}
                       </React.Fragment>
@@ -134,9 +136,9 @@ const Analysis = () => {
                   </div>
                 </div>
               ) : (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-                  <Activity size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
-                  <p>Ejecuta un algoritmo para ver la visualización aquí.</p>
+                <div style={{ color: '#4b5563', textAlign: 'center' }}>
+                  <Activity size={40} style={{ opacity: 0.1, marginBottom: '0.5rem', margin: '0 auto' }} />
+                  <p style={{ fontSize: '0.875rem' }}>Los resultados aparecerán aquí.</p>
                 </div>
               )}
             </div>
@@ -144,27 +146,27 @@ const Analysis = () => {
         </div>
 
         {/* TOP SUPPLIERS & COUNTRY STATS */}
-        <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Star size={20} color="#f59e0b" style={{ verticalAlign: 'middle', marginRight: '0.5rem' }}/> Mejores Proveedores (Centralidad)</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Los proveedores más importantes de la red basados en sus conexiones totales (inbound y outbound).
-            </p>
-            <div className="table-container">
+        <div className="grid-2" style={{ gap: '1.5rem' }}>
+          <div className="section">
+            <div className="section-title">
+              <Star size={18} color="#facc15" style={{ marginRight: '0.5rem' }}/> 
+              Importancia de Nodos
+            </div>
+            <div className="table-wrap" style={{ maxHeight: '300px' }}>
               <table>
                 <thead>
                   <tr>
-                    <th>Supplier ID</th>
+                    <th>ID</th>
                     <th>Nombre</th>
-                    <th>Conexiones (Grado)</th>
+                    <th>Conexiones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topSuppliers.map((s, i) => (
                     <tr key={i}>
-                      <td><strong>{s.supplierId}</strong></td>
+                      <td style={{ color: '#38bdf8', fontWeight: 600 }}>{s.supplierId}</td>
                       <td>{s.name}</td>
-                      <td><span className="badge badge-success">{s.degree} rels</span></td>
+                      <td><span className="badge badge-blue">{s.degree}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -172,26 +174,30 @@ const Analysis = () => {
             </div>
           </div>
 
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3><Globe size={20} color="#10b981" style={{ verticalAlign: 'middle', marginRight: '0.5rem' }}/> Estadísticas de Proveedores por País</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-              Agrupación por país calculando el rating promedio y el total de proveedores.
-            </p>
-            <div className="table-container">
+          <div className="section">
+            <div className="section-title">
+              <Globe size={18} color="#10b981" style={{ marginRight: '0.5rem' }}/> 
+              Rating por País
+            </div>
+            <div className="table-wrap" style={{ maxHeight: '300px' }}>
               <table>
                 <thead>
                   <tr>
                     <th>País</th>
                     <th>Rating Promedio</th>
-                    <th>Total de Proveedores</th>
+                    <th>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {countryStats.slice(0, 10).map((c, i) => (
                     <tr key={i}>
-                      <td>{c.country}</td>
-                      <td>{c.avgRating ? c.avgRating.toFixed(2) : 'N/A'}</td>
-                      <td>{c.total}</td>
+                      <td style={{ fontWeight: 600 }}>{c.country}</td>
+                      <td>
+                        <span className={`badge ${c.avgRating > 3 ? 'badge-green' : 'badge-yellow'}`}>
+                          {c.avgRating ? c.avgRating.toFixed(2) : 'N/A'}
+                        </span>
+                      </td>
+                      <td style={{ color: '#9ca3af' }}>{c.total}</td>
                     </tr>
                   ))}
                 </tbody>

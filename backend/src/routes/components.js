@@ -6,12 +6,11 @@ const router = Router()
 router.get('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { category, isHazardous, maxCost } = req.query
+    const { category, isHazardous } = req.query
     let conditions = []
     const params = {}
     if (category) { conditions.push('c.category = $category'); params.category = category }
     if (isHazardous !== undefined) { conditions.push('c.isHazardous = $isHazardous'); params.isHazardous = isHazardous === 'true' }
-    if (maxCost) { conditions.push('c.unitCost <= $maxCost'); params.maxCost = parseFloat(maxCost) }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const result = await session.run(
       `MATCH (c:Component) ${where} RETURN c ORDER BY c.name`,
@@ -36,18 +35,23 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   const session = getSession()
   try {
-    const { componentId, name, category, unitCost, stockQuantity, isHazardous, compatibleWith } = req.body
+    const { componentId, name, category, material, unitWeight, isHazardous, manufactureDate } = req.body
     const result = await session.run(
       `CREATE (c:Component {
         componentId: $componentId,
         name: $name,
         category: $category,
-        unitCost: $unitCost,
-        stockQuantity: $stockQuantity,
+        material: $material,
+        unitWeight: $unitWeight,
         isHazardous: $isHazardous,
-        compatibleWith: $compatibleWith
+        manufactureDate: date($manufactureDate)
       }) RETURN c`,
-      { componentId, name, category, unitCost, stockQuantity, isHazardous, compatibleWith }
+      { 
+        componentId, name, category, material, 
+        unitWeight: parseFloat(unitWeight), 
+        isHazardous: isHazardous === true, 
+        manufactureDate 
+      }
     )
     res.status(201).json(result.records[0].get('c').properties)
   } catch (err) { next(err) } finally { await session.close() }
@@ -134,13 +138,12 @@ router.get('/stats/by-category', async (req, res, next) => {
   try {
     const result = await session.run(
       `MATCH (c:Component)
-       RETURN c.category AS category, avg(c.unitCost) AS avgCost, sum(c.stockQuantity) AS totalStock
-       ORDER BY totalStock DESC`
+       RETURN c.category AS category, count(c) AS total
+       ORDER BY total DESC`
     )
     res.json(result.records.map(r => ({
       category: r.get('category'),
-      avgCost: r.get('avgCost'),
-      totalStock: r.get('totalStock').toNumber()
+      total: r.get('total').toNumber()
     })))
   } catch (err) { next(err) } finally { await session.close() }
 })
